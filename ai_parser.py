@@ -10,16 +10,7 @@ import anthropic
 
 logger = logging.getLogger(__name__)
 
-def _create_client():
-    """Create Anthropic client, handling Railway proxy env vars."""
-    # Railway may set proxy vars that conflict with httpx
-    import httpx
-    return anthropic.Anthropic(
-        api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
-        http_client=httpx.Client(),
-    )
-
-client = _create_client()
+client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
 
 # ------------------------------------------------------------------ #
 #  Supply channel parser

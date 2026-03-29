@@ -391,7 +391,7 @@ class InventoryManager:
         lines.append(":large_green_circle: Good  :large_yellow_circle: Low  :red_circle: Out")
         return "\n".join(lines)
 
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------------------------ #
     #  Catalog management (add / update / remove items)
     # ------------------------------------------------------------------ #
     def add_item(
@@ -464,6 +464,7 @@ class InventoryManager:
             "category": "Category",
             "slack_alias": "Slack Alias",
             "item_name": "Item Name",
+            "current_stock": "Current Stock",
         }
 
         col_header = field_map.get(field.lower(), field)

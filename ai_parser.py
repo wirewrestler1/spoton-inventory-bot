@@ -34,57 +34,7 @@ RULES:
 8. "handful" or "a few" = 3. "a bunch" = 5. Use reasonable defaults.
 9. Ignore lines about rags (picking up / dropping off rags is not tracked).
 10. Ignore lines about non-inventory commentary like dates or signatures.
-11. If someone is doing a stock count / inventory count and reporting how many of each item are currently on hand (e.g., "we have 5 scrubbing bubbles, 10 magic erasers" or "stock count: scrubbing bubbles 5, lysol 3" or "counted 8 gloves large, 12 toilet brushes"), classify it as "stock_count". Key phrases: "we have", "stock count", "counted", "on hand", "in stock", "current count", "inventory count", "physical count", "update stock", "set stock". The quantities represent the TOTAL amount currently in the office, NOT what was taken.
-
-Respond ONLY with valid JSON matching this schema:
-{
-  "type": "supply_pickup" | "need_request" | "stock_count" | "unclear" | "not_inventory",
-  "items": [                          // for supply_pickup AND stock_count
-    {
-      "raw_name": "what they wrote",
-      "matched_name": "closest inventory item name or null",
-      "matched_alias": "the alias that matched or null",
-      "quantity": 1,
-      "confidence": "high" | "medium" | "low"
-    }
-  ],
-  "item_name": "...",                 // only for need_request
-  "clarification_question": "...",    // only for unclear
-  "summary": "short plain-english summary of what happened"
-}
-"""
-
-# ------------------------------------------------------------------ #
-#  Purchase order channel parser
-# ------------------------------------------------------------------ #
-PO_SYSTEM_PROMPT = """\
-You are the inventory assistant for Spot On Cleaners. Your job is to read messages in the
-#purchase_orders Slack channel and understand order-related updates.
-
-ACTIVE PURCHASE ORDERS:
-{po_list}
-
-RULES:
-1. Messages may confirm an order has been placed, arrived, been delivered, has tracking info, etc.
-2. Match the message to a known PO from the list above if possible.
-3. Extract any tracking numbers, delivery confirmations, or status updates.
-4. Classify messages as:
-   - "order_placed": Someone confirms they placed/submitted an order (status → "Ordered")
-   - "order_received": Supplies arrived / were delivered (status → "Delivered")
-   - "tracking_update": Tracking number or shipping update provided
-   - "order_update": General status update about an order
-   - "not_order": Not related to purchase orders
-   - "unclear": Can't determine which order or what the update is
-
-Respond ONLY with valid JSON matching this schema:
-{
-  "type": "order_placed" | "order_received" | "tracking_update" | "order_update" | "not_order" | "unclear",
-  "po_number": "PO-XXXX or null if not identified",
-  "item_name": "item name if identified",
-  "tracking_number": "tracking number if provided, else null",
-  "quantity_received": null or number,
-  "new_status": "Ordered" | "Shipped" | "Delivered" | "Cancelled" | null,
-  "clarification_question": "...",    // only for unclear
+11. If someone is doing a stock count / inventory count and reporting how many of each item are currently on hand (e.g., "we have 5 scrubbing bubbles, 10 magic erasers" or "stock count: scrubbing bubbles 5, lysol 3" or "counted 8 gloves large, 12 toilet brushes"), classify it as "stock_count". Key phrases: "we have", "stock count", "counted", "on hand", "in stock", "current count", "inventory count", "physical count", "update stock", "set stock". The quantittion_question": "...",    // only for unclear
   "summary": "short plain-english summary"
 }
 """
@@ -233,36 +183,84 @@ You can handle these types of commands (interpret naturally — people won't use
    Extract: item_name (match to catalog), field (one of: reorder_threshold, reorder_quantity,
    category, slack_alias), value.
 
-5. "remove_item" — Remove an item from the catalog entirely.
+5. "set_stock" — Set the current stock count for an item. Used when someone reports how many
+   of something they have on hand, does a physical count, or corrects a stock number.
+   "we actually have 800 white rags", "set lysol stock to 12", "there are 5 scrubbing bubbles",
+   "update the count on magic erasers to 20", "we have like 50 gloves".
+   Extract: item_name (match to catalog), quantity (the stock count number).
+   This is NOT for adding items to the catalog — it's for updating the count of existing items.
+
+6. "remove_item" — Remove an item from the catalog entirely.
    "remove the vacuum from the list", "delete sponges from inventory".
    Extract: item_name (match to catalog).
 
-6. "show_shopping_list" — Show items that need to be ordered (at or below reorder threshold).
+7. "show_shopping_list" — Show items that need to be ordered (at or below reorder threshold).
    "what do we need to order?", "shopping list", "what's running low?", "what do we need?".
 
-7. "show_inventory" — Show the full inventory list or link to the Google Sheet.
+8. "show_inventory" — Show the full inventory list or link to the Google Sheet.
    "show me everything", "full inventory", "what's in the catalog?", "show inventory".
 
-8. "item_info" — Show details about a specific item.
+9. "item_info" — Show details about a specific item.
    "tell me about scrubbing bubbles", "what's the info on lysol?", "how many magic erasers do we have?".
    Extract: item_name (match to catalog).
 
-9. "help" — User is asking what the bot can do, how to use it, etc.
+10. "help" — User is asking what the bot can do, how to use it, etc.
 
-10. "unknown" — You can't figure out what they want. Ask a clarification question.
+11. "unknown" — You can't figure out what they want. Ask a clarification question.
 
 IMPORTANT RULES:
 - Match item names fuzzily to the catalog. People use shorthand and nicknames.
+  "white rags" = "White Cleaning Cloths", "rags" = "White Cleaning Cloths", etc.
 - If the command seems clear enough to execute, mark needs_confirmation as false.
 - If the command is ambiguous or destructive (like removing an item), mark needs_confirmation as true
   and include a confirmation_question asking the user to verify.
 - If they mention a URL, extract it fully.
 - If someone asks to add an item that already exists in the catalog, set type to "update_item" or
   "update_link" as appropriate and note it in the summary.
+- If someone says "we have X of [item]" or "[item] count is X" or "actually have X [item]",
+  that's a set_stock command — they're reporting a physical count.
+- If the message is vague (like "figure it out" or "just do it"), classify astock count for an item. Used when someone reports how many
+   of something they have on hand, does a physical count, or corrects a stock number.
+   "we actually have 800 white rags", "set lysol stock to 12", "there are 5 scrubbing bubbles",
+   "update the count on magic erasers to 20", "we have like 50 gloves".
+   Extract: item_name (match to catalog), quantity (the stock count number).
+   This is NOT for adding items to the catalog — it's for updating the count of existing items.
+
+6. "remove_item" — Remove an item from the catalog entirely.
+   "remove the vacuum from the list", "delete sponges from inventory".
+   Extract: item_name (match to catalog).
+
+7. "show_shopping_list" — Show items that need to be ordered (at or below reorder threshold).
+   "what do we need to order?", "shopping list", "what's running low?", "what do we need?".
+
+8. "show_inventory" — Show the full inventory list or link to the Google Sheet.
+   "show me everything", "full inventory", "what's in the catalog?", "show inventory".
+
+9. "item_info" — Show details about a specific item.
+   "tell me about scrubbing bubbles", "what's the info on lysol?", "how many magic erasers do we have?".
+   Extract: item_name (match to catalog).
+
+10. "help" — User is asking what the bot can do, how to use it, etc.
+
+11. "unknown" — You can't figure out what they want. Ask a clarification question.
+
+IMPORTANT RULES:
+- Match item names fuzzily to the catalog. People use shorthand and nicknames.
+  "white rags" = "White Cleaning Cloths", "rags" = "White Cleaning Cloths", etc.
+- If the command seems clear enough to execute, mark needs_confirmation as false.
+- If the command is ambiguous or destructive (like removing an item), mark needs_confirmation as true
+  and include a confirmation_question asking the user to verify.
+- If they mention a URL, extract it fully.
+- If someone asks to add an item that already exists in the catalog, set type to "update_item" or
+  "update_link" as appropriate and note it in the summary.
+- If someone says "we have X of [item]" or "[item] count is X" or "actually have X [item]",
+  that's a set_stock command — they're reporting a physical count.
+- If the message is vague (like "figure it out" or "just do it"), classify as "unknown" and
+  ask a specific clarification question about what action they want (add, update stock, etc.).
 
 Respond ONLY with valid JSON matching this schema:
 {
-  "type": "add_item" | "update_link" | "set_vendor" | "update_item" | "remove_item" | "show_shopping_list" | "show_inventory" | "item_info" | "help" | "unknown",
+  "type": "add_item" | "update_link" | "set_vendor" | "update_item" | "set_stock" | "remove_item" | "show_shopping_list" | "show_inventory" | "item_info" | "help" | "unknown",
   "item_name": "matched catalog name or new item name",
   "matched_name": "matched existing catalog name or null if new",
   "category": "category or null",
@@ -273,6 +271,7 @@ Respond ONLY with valid JSON matching this schema:
   "slack_alias": "alias or null",
   "field": "field name for update_item or null",
   "value": "new value for update_item or null",
+  "quantity": null or number,  // for set_stock — the stock count
   "needs_confirmation": true or false,
   "confirmation_question": "question to ask user before executing, or null",
   "summary": "short plain-english summary of what the user wants"

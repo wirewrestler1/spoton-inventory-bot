@@ -350,6 +350,31 @@ class InventoryManager:
             logger.error(f"Error finding PO by item: {e}")
         return None
 
+    def find_po_by_clickup_task_id(self, task_id: str) -> dict | None:
+        """Find a PO by its ClickUp task ID."""
+        try:
+            ws = self._get_sheet("Purchase Order Log")
+            rows = ws.get_all_records()
+
+            for row in reversed(rows):
+                if str(row.get("ClickUp Task ID", "")).strip() == task_id.strip():
+                    return {
+                        "po_number": row.get("PO Number", ""),
+                        "item_name": row.get("Item Name", ""),
+                        "quantity": row.get("Quantity", 0),
+                        "vendor": row.get("Vendor", ""),
+                        "clickup_task_id": task_id,
+                        "status": row.get("Status", ""),
+                    }
+        except Exception as e:
+            logger.error(f"Error finding PO by ClickUp task ID: {e}")
+        return None
+
+    def has_active_po(self, item_name: str) -> bool:
+        """Check if an item already has a pending/ordered PO."""
+        po = self.find_po_by_item(item_name)
+        return po is not None
+
     # ------------------------------------------------------------------ #
     #  Stock summary
     # ------------------------------------------------------------------ #

@@ -24,7 +24,7 @@ load_dotenv()
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from ai_parser import parse_inventory_message, parse_po_message
+from ai_parser import parse_inventory_message, parse_po_message, parse_bot_command
 from inventory import InventoryManager
 from clickup_client import ClickUpClient
 
@@ -245,6 +245,13 @@ def handle_message(event, say, client):
 
     if not text or not user_id:
         return
+
+    # --- Check for pending confirmation replies (from @mention commands) ---
+    with _confirmation_lock:
+        if user_id in _pending_confirmations:
+            user_name = _get_user_name(client, user_id)
+            _handle_confirmation_reply(user_id, text, say, client, thread_ts or message_ts, user_name)
+            return
 
     # --- Route to appropriate channel handler ---
     if channel == SUPPLIES_CHANNEL:
@@ -696,19 +703,311 @@ def handle_po_thread_reply(event, say, client):
 
 
 # ------------------------------------------------------------------ #
-#  App mention handler
+#  Pending confirmations  (user_id → command dict)
+# --------------------------------------------------------------------- #
+_pending_confirmations: dict[str, dict] = {}
+_confirmation_lock = threading.Lock()
+
+
+# ------------------------------------------------------------------ #
+#  App mention handler — AI-powered command routing
 # ------------------------------------------------------------------ #
 @app.event("app_mention")
-def handle_mention(event, say):
-    """Respond when someone @mentions the bot."""
+def handle_mention(event, say, client):
+    """Parse @mention as a natural-language command and route it."""
+    text = event.get("text", "").strip()
+    user_id = event.get("user", "")
+    message_ts = event.get("ts")
+    thread_ts = event.get("thread_ts") or message_ts
+
+    # Strip the <@BOT_ID> mention from the text
+    import re
+    text = re.sub(r"<@[A-Z0-9]+>\s*", "", text).strip()
+
+    if not text:
+        say(text="Hey! :wave: What can I help you with? Try asking me about inventory, the shopping list, or to add/update items.", thread_ts=thread_ts)
+        return
+
+    user_name = _get_user_name(client, user_id)
+
+    # Check if this is a confirmation reply to a pending command
+    with _confirmation_lock:
+        if user_id in _pending_confirmations:
+            _handle_confirmation_reply(user_id, text, say, client, thread_ts, user_name)
+            return
+
+    # Parse the command with AI
+    catalog = inventory.get_item_names_and_aliases()
+    cmd = parse_bot_command(text, catalog)
+    cmd_type = cmd.get("type", "unknown")
+
+    logger.info(f"Bot command from {user_name}: type={cmd_type}, summary={cmd.get('summary', '')}")
+
+    # If the AI says we need confirmation, stash the command and ask
+    if cmd.get("needs_confirmation"):
+        with _confirmation_lock:
+            _pending_confirmations[user_id] = cmd
+        question = cmd.get("confirmation_question", "Can you confirm you want me to do that?")
+        say(text=f":question: {question}", thread_ts=thread_ts)
+        return
+
+    # Route to the right handler
+    _route_bot_command(cmd, cmd_type, say, client, thread_ts, user_name)
+
+
+def _handle_confirmation_reply(user_id: str, text: str, say, client, thread_ts: str, user_name: str):
+    """Handle a yes/no reply to a pending confirmation."""
+    affirm = text.lower().strip()
+    cmd = _pending_confirmations.pop(user_id, None)
+
+    if not cmd:
+        return
+
+    if affirm in ("yes", "y", "yep", "yeah", "sure", "do it", "confirm", "go", "go ahead", "ok", "approved"):
+        cmd_type = cmd.get("type", "unknown")
+        _route_bot_command(cmd, cmd_type, say, client, thread_ts, user_name)
+    else:
+        say(text=":ok_hand: No problem — cancelled.", thread_ts=thread_ts)
+
+
+def _route_bot_command(cmd: dict, cmd_type: str, say, client, thread_ts: str, user_name: str):
+    """Dispatch a parsed command to the right handler function."""
+    handlers = {
+        "add_item": _handle_cmd_add_item,
+        "update_link": _handle_cmd_update_link,
+        "set_vendor": _handle_cmd_set_vendor,
+        "update_item": _handle_cmd_update_item,
+        "remove_item": _handle_cmd_remove_item,
+        "show_shopping_list": _handle_cmd_show_shopping_list,
+        "show_inventory": _handle_cmd_show_inventory,
+        "item_info": _handle_cmd_item_info,
+        "help": _handle_cmd_help,
+    }
+
+    handler = handlers.get(cmd_type)
+    if handler:
+        try:
+            handler(cmd, say, client, thread_ts, user_name)
+        except Exception as e:
+            logger.error(f"Command handler error ({cmd_type}): {e}")
+            say(text=f":warning: Something went wrong executing that — {e}", thread_ts=thread_ts)
+    else:
+        summary = cmd.get("summary", "I'm not sure what you need.")
+        say(text=f"Hmm, I didn't quite get that. {summary}\n\nTry asking me things like: _\"add vacuum to the list\"_, _\"what do we need to order?\"_, or _\"show me info on lysol\"_.", thread_ts=thread_ts)
+
+
+# ------------------------------------------------------------------ #
+#  Individual command handlers
+# ------------------------------------------------------------------ #
+def _handle_cmd_add_item(cmd: dict, say, client, thread_ts: str, user_name: str):
+    """Add a new item to the inventory catalog."""
+    item_name = cmd.get("item_name", "")
+    if not item_name:
+        say(text=":thinking_face: What item should I add? Give me a name.", thread_ts=thread_ts)
+        return
+
+    # Check if AI matched it to an existing item — redirect to update
+    if cmd.get("matched_name"):
+        say(text=f":bulb: *{cmd['matched_name']}* already exists in the catalog. Did you mean to update it? Try telling me what to change — like a new link, vendor, or reorder threshold.", thread_ts=thread_ts)
+        return
+
+    new_item = inventory.add_item(
+        item_name=item_name,
+        category=cmd.get("category") or "",
+        slack_alias=cmd.get("slack_alias") or "",
+        reorder_threshold=cmd.get("reorder_threshold") or 0,
+        reorder_quantity=cmd.get("reorder_quantity") or 0,
+        preferred_vendor=cmd.get("preferred_vendor") or "",
+        vendor_url=cmd.get("vendor_url") or "",
+    )
+
+    msg = f":white_check_mark: Added *{item_name}* to the inventory catalog!"
+    details = []
+    if cmd.get("category"):
+        details.append(f"Category: {cmd['category']}")
+    if cmd.get("preferred_vendor"):
+        details.append(f"Vendor: {cmd['preferred_vendor']}")
+    if cmd.get("vendor_url"):
+        details.append(f"Link: {cmd['vendor_url']}")
+    if cmd.get("reorder_threshold"):
+        details.append(f"Reorder at: {cmd['reorder_threshold']}")
+    if details:
+        msg += "\n" + " · ".join(details)
+
+    say(text=msg, thread_ts=thread_ts)
+
+    # Refresh pinned summary since catalog changed
+    threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()
+
+
+def _handle_cmd_update_link(cmd: dict, say, client, thread_ts: str, user_name: str):
+    """Update the purchase URL for an item."""
+    matched = cmd.get("matched_name") or cmd.get("item_name", "")
+    url = cmd.get("vendor_url", "")
+
+    if not matched:
+        say(text=":thinking_face: Which item should I update the link for?", thread_ts=thread_ts)
+        return
+    if not url:
+        say(text=f":thinking_face: What's the new URL for *{matched}*?", thread_ts=thread_ts)
+        return
+
+    result = inventory.update_item_field(matched, "vendor_url", url)
+    if result:
+        vendor_name = cmd.get("preferred_vendor")
+        if vendor_name:
+            inventory.update_item_field(matched, "preferred_vendor", vendor_name)
+        say(text=f":link: Updated *{matched}* purchase link!" + (f" (Vendor: {vendor_name})" if vendor_name else ""), thread_ts=thread_ts)
+    else:
+        say(text=f":warning: Couldn't find *{matched}* in the catalog to update.", thread_ts=thread_ts)
+
+
+def _handle_cmd_set_vendor(cmd: dict, say, client, thread_ts: str, user_name: str):
+    """Set the preferred vendor for an item."""
+    matched = cmd.get("matched_name") or cmd.get("item_name", "")
+    vendor = cmd.get("preferred_vendor", "")
+
+    if not matched or not vendor:
+        say(text=":thinking_face: I need both an item name and a vendor. Try: _\"set vendor for lysol to Amazon\"_", thread_ts=thread_ts)
+        return
+
+    result = inventory.update_item_field(matched, "preferred_vendor", vendor)
+    if result:
+        say(text=f":truck: Set preferred vendor for *{matched}* to *{vendor}*.", thread_ts=thread_ts)
+    else:
+        say(text=f":warning: Couldn't find *{matched}* in the catalog.", thread_ts=thread_ts)
+
+
+def _handle_cmd_update_item(cmd: dict, say, client, thread_ts: str, user_name: str):
+    """Update a field (threshold, qty, category, alias, etc.) for an item."""
+    matched = cmd.get("matched_name") or cmd.get("item_name", "")
+    field = cmd.get("field", "")
+    value = cmd.get("value", "")
+
+    if not matched or not field:
+        say(text=":thinking_face: I need to know which item and what to change. Try: _\"set reorder threshold for lysol to 5\"_", thread_ts=thread_ts)
+        return
+
+    result = inventory.update_item_field(matched, field, value)
+    if result:
+        say(text=f":pencil2: Updated *{matched}* — set *{field}* to *{value}*.", thread_ts=thread_ts)
+    else:
+        say(text=f":warning: Couldn't update *{matched}*. Make sure the item exists and the field is valid.", thread_ts=thread_ts)
+
+
+def _handle_cmd_remove_item(cmd: dict, say, client, thread_ts: str, user_name: str):
+    """Remove an item from the catalog."""
+    matched = cmd.get("matched_name") or cmd.get("item_name", "")
+    if not matched:
+        say(text=":thinking_face: Which item should I remove?", thread_ts=thread_ts)
+        return
+
+    result = inventory.delete_item(matched)
+    if result:
+        say(text=f":wastebasket: Removed *{matched}* from the inventory catalog.", thread_ts=thread_ts)
+        threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()
+    else:
+        say(text=f":warning: Couldn't find *{matched}* to remove.", thread_ts=thread_ts)
+
+
+def _handle_cmd_show_shopping_list(cmd: dict, say, client, thread_ts: str, user_name: str):
+    """Show items at or below reorder threshold."""
+    items = inventory.get_shopping_list()
+
+    if not items:
+        say(text=":white_check_mark: Everything's stocked up — nothing needs ordering right now!", thread_ts=thread_ts)
+        return
+
+    lines = [":shopping_cart: *Items that need ordering:*\n"]
+    for item in items:
+        name = item.get("item_name", "?")
+        stock = item.get("current_stock", 0)
+        threshold = item.get("reorder_threshold", 0)
+        reorder_qty = item.get("reorder_quantity", 0)
+        vendor = item.get("preferred_vendor", "")
+        url = item.get("vendor_url", "")
+
+        line = f"  :small_red_triangle_down: *{name}* — stock: {stock} (threshold: {threshold})"
+        if reorder_qty:
+            line += f", order {reorder_qty}"
+        if url and vendor:
+            line += f" · <{url}|Buy from {vendor}>"
+        elif vendor:
+            line += f" · Vendor: {vendor}"
+        lines.append(line)
+
+    say(text="\n".join(lines), thread_ts=thread_ts)
+
+
+def _handle_cmd_show_inventory(cmd: dict, say, client, thread_ts: str, user_name: str):
+    """Show the full inventory catalog or link to the sheet."""
+    try:
+        catalog = inventory.get_item_names_and_aliases()
+        if not catalog:
+            say(text=":package: The inventory catalog is empty. Add items by telling me, e.g. _\"add vacuum to the list\"_.", thread_ts=thread_ts)
+            return
+
+        lines = [f":package: *Full Inventory Catalog* ({len(catalog)} items):\n"]
+        for item in catalog:
+            lines.append(f"  • {item['name']}" + (f"  _(alias: {item['alias']})_" if item.get("alias") else ""))
+
+        sheet_url = os.environ.get("GOOGLE_SHEET_URL", "")
+        if sheet_url:
+            lines.append(f"\n:link: <{sheet_url}|Open Google Sheet>")
+
+        say(text="\n".join(lines), thread_ts=thread_ts)
+
+    except Exception as e:
+        logger.error(f"Show inventory error: {e}")
+        say(text=":warning: Had trouble pulling the catalog. Try again in a sec.", thread_ts=thread_ts)
+
+
+def _handle_cmd_item_info(cmd: dict, say, client, thread_ts: str, user_name: str):
+    """Show details about a specific item."""
+    matched = cmd.get("matched_name") or cmd.get("item_name", "")
+    if not matched:
+        say(text=":thinking_face: Which item do you want info on?", thread_ts=thread_ts)
+        return
+
+    details = inventory.get_item_details(matched)
+    if not details:
+        say(text=f":warning: Couldn't find *{matched}* in the catalog.", thread_ts=thread_ts)
+        return
+
+    lines = [f":mag: *{details.get('item_name', matched)}*\n"]
+    if details.get("category"):
+        lines.append(f"  Category: {details['category']}")
+    lines.append(f"  Current stock: *{details.get('current_stock', '?')}*")
+    lines.append(f"  Reorder threshold: {details.get('reorder_threshold', '—')}")
+    lines.append(f"  Reorder quantity: {details.get('reorder_quantity', '—')}")
+    if details.get("preferred_vendor"):
+        lines.append(f"  Vendor: {details['preferred_vendor']}")
+    if details.get("vendor_url"):
+        lines.append(f"  :link: <{details['vendor_url']}|Purchase link>")
+    if details.get("slack_alias"):
+        lines.append(f"  Slack alias: _{details['slack_alias']}_")
+
+    say(text="\n".join(lines), thread_ts=thread_ts)
+
+
+def _handle_cmd_help(cmd: dict, say, client, thread_ts: str, user_name: str):
+    """Show help — what the bot can do."""
     say(
         text=(
-            "Hey! :wave: I'm the SpotOn Inventory Bot.\n"
-            "Just post your supply pickups in #supplies-and-inventory and I'll log them automatically.\n"
-            "If something's unclear, I'll ask. Need to check stock? I keep a pinned summary updated right there. :package:\n\n"
-            "In #purchase_orders, I track orders too — just post when you've placed or received an order and I'll update everything."
+            "Hey! :wave: I'm the SpotOn Inventory Bot. Here's what I can do:\n\n"
+            ":package: *Inventory tracking* — Post supply pickups or stock counts in #supplies-and-inventory and I log them automatically.\n"
+            ":shopping_cart: *Shopping list* — Ask me _\"what do we need to order?\"_ and I'll show low-stock items.\n"
+            ":heavy_plus_sign: *Add items* — _\"add vacuum to the list\"_ or _\"start tracking sponges, reorder at 5\"_\n"
+            ":link: *Update links* — _\"here's the amazon link for magic erasers: https://...\"_\n"
+            ":truck: *Set vendors* — _\"we buy lysol from Amazon now\"_\n"
+            ":pencil2: *Update items* — _\"set reorder threshold for lysol to 5\"_ or _\"change the alias for toilet brush to tb\"_\n"
+            ":wastebasket: *Remove items* — _\"remove vacuum from the list\"_\n"
+            ":mag: *Item details* — _\"tell me about scrubbing bubbles\"_ or _\"how many magic erasers do we have?\"_\n"
+            ":clipboard: *Full catalog* — _\"show me everything\"_ or _\"full inventory\"_\n\n"
+            "In #purchase_orders, I track orders too — just post when you've placed or received an order.\n"
+            "Just talk to me naturally — I'll figure out what you mean! :sparkles:"
         ),
-        thread_ts=event.get("ts"),
+        thread_ts=thread_ts,
     )
 
 

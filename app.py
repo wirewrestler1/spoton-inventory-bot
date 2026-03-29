@@ -1,10 +1,10 @@
 """
-SpotOn Inventory Bot Ã¢ÂÂ AI-powered Slack bot for the full supply pipeline.
+SpotOn Inventory Bot ÃÂ¢ÃÂÃÂ AI-powered Slack bot for the full supply pipeline.
 
 Replaces all 3 Zapier Zaps:
-  Zap 1: Parses supply intake Ã¢ÂÂ decrements stock Ã¢ÂÂ triggers reorder alerts
+  Zap 1: Parses supply intake ÃÂ¢ÃÂÃÂ decrements stock ÃÂ¢ÃÂÃÂ triggers reorder alerts
   Zap 2: Creates POs in Google Sheets + ClickUp tasks
-  Zap 3: Handles order confirmations Ã¢ÂÂ updates PO log + ClickUp
+  Zap 3: Handles order confirmations ÃÂ¢ÃÂÃÂ updates PO log + ClickUp
 
 Plus new capabilities:
   - AI-powered natural language understanding with clarification
@@ -167,7 +167,7 @@ def _periodic_summary_refresh():
         try:
             from slack_sdk import WebClient
             client = WebClient(token=os.environ["SLACK_BOT_TOKEN"])
-            update_pinned_summary(client)
+            # update_pinned_summary(client)  # DISABLED - fixing duplicate post bug
             # Also sync shopping list to ClickUp
             _sync_shopping_list_to_clickup(client)
         except Exception as e:
@@ -224,12 +224,12 @@ def _notify_status_change(client, task_name: str, task_id: str,
 
     msg = (
         f"{emoji} *Task Update:* {task_name}\n"
-        f"Status changed: _{old_status}_ Ã¢ÂÂ *{new_status}*{link}"
+        f"Status changed: _{old_status}_ ÃÂ¢ÃÂÃÂ *{new_status}*{link}"
     )
 
     try:
         client.chat_postMessage(channel=PO_CHANNEL, text=msg)
-        logger.info(f"Notified status change: {task_name} Ã¢ÂÂ {new_status}")
+        logger.info(f"Notified status change: {task_name} ÃÂ¢ÃÂÃÂ {new_status}")
     except Exception as e:
         logger.error(f"Failed to notify status change: {e}")
 
@@ -354,7 +354,7 @@ def _sync_shopping_list_to_clickup(client):
                 vendor_link = f"\n:shopping_cart: Vendor: {vendor}"
 
             alert_msg = (
-                f":rotating_light: *Reorder Alert Ã¢ÂÂ {po_number}*\n\n"
+                f":rotating_light: *Reorder Alert ÃÂ¢ÃÂÃÂ {po_number}*\n\n"
                 f"*{item_name}* is low (stock: {stock}, min: {threshold}).\n"
                 f"*Order {reorder_qty}x* to restock."
                 f"{vendor_link}"
@@ -444,7 +444,7 @@ def handle_supply_message(event, say, client):
     elif msg_type == "unclear":
         _handle_unclear(result, say, message_ts, user_name)
 
-    # "not_inventory" Ã¢ÂÂ ignore silently
+    # "not_inventory" ÃÂ¢ÃÂÃÂ ignore silently
 
 
 def _handle_pickup(result: dict, say, client, thread_ts: str, user_name: str):
@@ -466,7 +466,7 @@ def _handle_pickup(result: dict, say, client, thread_ts: str, user_name: str):
 
         suffix = ""
         if conf == "low":
-            suffix = "  _(best guess Ã¢ÂÂ correct me if wrong!)_"
+            suffix = "  _(best guess ÃÂ¢ÃÂÃÂ correct me if wrong!)_"
         elif conf == "medium":
             suffix = "  _(I think)_"
 
@@ -483,7 +483,7 @@ def _handle_pickup(result: dict, say, client, thread_ts: str, user_name: str):
 
     if reorder_items:
         low_names = [r["item_name"] for r in reorder_items]
-        msg += f"\n\n:warning: Heads up Ã¢ÂÂ *{', '.join(low_names)}* {'is' if len(low_names) == 1 else 'are'} getting low. Creating reorder{'s' if len(low_names) > 1 else ''} now..."
+        msg += f"\n\n:warning: Heads up ÃÂ¢ÃÂÃÂ *{', '.join(low_names)}* {'is' if len(low_names) == 1 else 'are'} getting low. Creating reorder{'s' if len(low_names) > 1 else ''} now..."
 
     say(text=msg, thread_ts=thread_ts)
 
@@ -525,7 +525,7 @@ def _handle_stock_count(result: dict, say, client, thread_ts: str, user_name: st
                     arrow = f":arrow_down: ({diff})"
                 else:
                     arrow = ":left_right_arrow: (no change)"
-                lines.append(f"  :white_check_mark: *{display_name}*: {prev} Ã¢ÂÂ *{qty}* {arrow}")
+                lines.append(f"  :white_check_mark: *{display_name}*: {prev} ÃÂ¢ÃÂÃÂ *{qty}* {arrow}")
             else:
                 lines.append(f"  :warning: *{display_name}*: couldn't update")
         else:
@@ -593,7 +593,7 @@ def _process_reorder(client, stock_info: dict):
             vendor_link = f"\n:shopping_cart: Vendor: {vendor}"
 
         alert_msg = (
-            f":rotating_light: *Reorder Alert Ã¢ÂÂ {po_number}*\n\n"
+            f":rotating_light: *Reorder Alert ÃÂ¢ÃÂÃÂ {po_number}*\n\n"
             f"*{item_name}* is low (stock: {new_stock}, threshold: {threshold}).\n"
             f"*Order {reorder_qty}x* to restock."
             f"{vendor_link}"
@@ -602,7 +602,7 @@ def _process_reorder(client, stock_info: dict):
         )
 
         client.chat_postMessage(channel=PO_CHANNEL, text=alert_msg)
-        logger.info(f"Reorder pipeline complete: {po_number} Ã¢ÂÂ {item_name}")
+        logger.info(f"Reorder pipeline complete: {po_number} ÃÂ¢ÃÂÃÂ {item_name}")
 
     except Exception as e:
         logger.error(f"Reorder pipeline error: {e}")
@@ -627,7 +627,7 @@ def _handle_unclear(result: dict, say, thread_ts: str, user_name: str):
         "Could you list the supplies you picked up and how many of each?"
     )
     say(
-        text=f"Hey {user_name} Ã¢ÂÂ {question}",
+        text=f"Hey {user_name} ÃÂ¢ÃÂÃÂ {question}",
         thread_ts=thread_ts,
     )
 
@@ -652,7 +652,7 @@ def handle_supply_thread_reply(event, say, client):
         _handle_stock_count(result, say, client, thread_ts, user_name)
     elif msg_type == "unclear":
         _handle_unclear(result, say, thread_ts, user_name)
-    # Otherwise ignore Ã¢ÂÂ they might just be chatting in the thread
+    # Otherwise ignore ÃÂ¢ÃÂÃÂ they might just be chatting in the thread
 
 
 # ------------------------------------------------------------------ #
@@ -688,9 +688,9 @@ def handle_po_message(event, say, client):
             "clarification_question",
             "Which order are you referring to? Could you include the PO number or item name?"
         )
-        say(text=f"Hey {user_name} Ã¢ÂÂ {question}", thread_ts=message_ts)
+        say(text=f"Hey {user_name} ÃÂ¢ÃÂÃÂ {question}", thread_ts=message_ts)
 
-    # "not_order" Ã¢ÂÂ ignore silently
+    # "not_order" ÃÂ¢ÃÂÃÂ ignore silently
 
 
 def _handle_order_placed(result: dict, say, client, thread_ts: str, user_name: str):
@@ -784,12 +784,12 @@ def _handle_tracking_update(result: dict, say, client, thread_ts: str, user_name
             )
 
         say(
-            text=f":truck: Updated *{po_number}*" + (f" ({item_name})" if item_name else "") + f" Ã¢ÂÂ tracking: `{tracking}`",
+            text=f":truck: Updated *{po_number}*" + (f" ({item_name})" if item_name else "") + f" ÃÂ¢ÃÂÃÂ tracking: `{tracking}`",
             thread_ts=thread_ts,
         )
     elif tracking:
         say(
-            text=f"Got the tracking number `{tracking}` Ã¢ÂÂ which PO is this for?",
+            text=f"Got the tracking number `{tracking}` ÃÂ¢ÃÂÃÂ which PO is this for?",
             thread_ts=thread_ts,
         )
     else:
@@ -814,7 +814,7 @@ def _handle_order_update(result: dict, say, client, thread_ts: str, user_name: s
             )
 
         say(
-            text=f":arrows_counterclockwise: Updated *{po_number}* Ã¢ÂÂ *{new_status}*",
+            text=f":arrows_counterclockwise: Updated *{po_number}* ÃÂ¢ÃÂÃÂ *{new_status}*",
             thread_ts=thread_ts,
         )
     elif summary:
@@ -848,18 +848,18 @@ def handle_po_thread_reply(event, say, client):
         _handle_order_update(result, say, client, thread_ts, user_name)
     elif msg_type == "unclear":
         question = result.get("clarification_question", "Could you clarify which order and the update?")
-        say(text=f"Hey {user_name} Ã¢ÂÂ {question}", thread_ts=thread_ts)
+        say(text=f"Hey {user_name} ÃÂ¢ÃÂÃÂ {question}", thread_ts=thread_ts)
 
 
 # ------------------------------------------------------------------ #
-#  Pending confirmations  (user_id Ã¢ÂÂ command dict)
+#  Pending confirmations  (user_id ÃÂ¢ÃÂÃÂ command dict)
 # ------------------------------------------------------------------ #
 _pending_confirmations: dict[str, dict] = {}
 _confirmation_lock = threading.Lock()
 
 
 # ------------------------------------------------------------------ #
-#  App mention handler Ã¢ÂÂ AI-powered command routing
+#  App mention handler ÃÂ¢ÃÂÃÂ AI-powered command routing
 # ------------------------------------------------------------------ #
 @app.event("app_mention")
 def handle_mention(event, say, client):
@@ -916,7 +916,7 @@ def _handle_confirmation_reply(user_id: str, text: str, say, client, thread_ts: 
         cmd_type = cmd.get("type", "unknown")
         _route_bot_command(cmd, cmd_type, say, client, thread_ts, user_name)
     else:
-        say(text=":ok_hand: No problem Ã¢ÂÂ cancelled.", thread_ts=thread_ts)
+        say(text=":ok_hand: No problem ÃÂ¢ÃÂÃÂ cancelled.", thread_ts=thread_ts)
 
 
 def _route_bot_command(cmd: dict, cmd_type: str, say, client, thread_ts: str, user_name: str):
@@ -940,7 +940,7 @@ def _route_bot_command(cmd: dict, cmd_type: str, say, client, thread_ts: str, us
             handler(cmd, say, client, thread_ts, user_name)
         except Exception as e:
             logger.error(f"Command handler error ({cmd_type}): {e}")
-            say(text=f":warning: Something went wrong executing that Ã¢ÂÂ {e}", thread_ts=thread_ts)
+            say(text=f":warning: Something went wrong executing that ÃÂ¢ÃÂÃÂ {e}", thread_ts=thread_ts)
     else:
         summary = cmd.get("summary", "I'm not sure what you need.")
         say(text=f"Hmm, I didn't quite get that. {summary}\n\nTry asking me things like: _\"add vacuum to the list\"_, _\"what do we need to order?\"_, or _\"show me info on lysol\"_.", thread_ts=thread_ts)
@@ -956,9 +956,9 @@ def _handle_cmd_add_item(cmd: dict, say, client, thread_ts: str, user_name: str)
         say(text=":thinking_face: What item should I add? Give me a name.", thread_ts=thread_ts)
         return
 
-    # Check if AI matched it to an existing item Ã¢ÂÂ redirect to update
+    # Check if AI matched it to an existing item ÃÂ¢ÃÂÃÂ redirect to update
     if cmd.get("matched_name"):
-        say(text=f":bulb: *{cmd['matched_name']}* already exists in the catalog. Did you mean to update it? Try telling me what to change Ã¢ÂÂ like a new link, vendor, or reorder threshold.", thread_ts=thread_ts)
+        say(text=f":bulb: *{cmd['matched_name']}* already exists in the catalog. Did you mean to update it? Try telling me what to change ÃÂ¢ÃÂÃÂ like a new link, vendor, or reorder threshold.", thread_ts=thread_ts)
         return
 
     new_item = inventory.add_item(
@@ -982,7 +982,7 @@ def _handle_cmd_add_item(cmd: dict, say, client, thread_ts: str, user_name: str)
     if cmd.get("reorder_threshold"):
         details.append(f"Reorder at: {cmd['reorder_threshold']}")
     if details:
-        msg += "\n" + " ÃÂ· ".join(details)
+        msg += "\n" + " ÃÂÃÂ· ".join(details)
 
     say(text=msg, thread_ts=thread_ts)
 
@@ -1040,7 +1040,7 @@ def _handle_cmd_update_item(cmd: dict, say, client, thread_ts: str, user_name: s
 
     result = inventory.update_item_field(matched, field, value)
     if result:
-        say(text=f":pencil2: Updated *{matched}* Ã¢ÂÂ set *{field}* to *{value}*.", thread_ts=thread_ts)
+        say(text=f":pencil2: Updated *{matched}* ÃÂ¢ÃÂÃÂ set *{field}* to *{value}*.", thread_ts=thread_ts)
     else:
         say(text=f":warning: Couldn't update *{matched}*. Make sure the item exists and the field is valid.", thread_ts=thread_ts)
 
@@ -1066,7 +1066,7 @@ def _handle_cmd_set_stock(cmd: dict, say, client, thread_ts: str, user_name: str
     result = inventory.set_stock(matched, qty)
     if result:
         prev = result.get("previous_stock", "?")
-        say(text=f":pencil2: Updated *{matched}* stock: {prev} Ã¢ÂÂ *{int(qty)}*", thread_ts=thread_ts)
+        say(text=f":pencil2: Updated *{matched}* stock: {prev} ÃÂ¢ÃÂÃÂ *{int(qty)}*", thread_ts=thread_ts)
         # Refresh pinned summary since stock changed
         threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()
     else:
@@ -1077,7 +1077,7 @@ def _handle_cmd_set_stock(cmd: dict, say, client, thread_ts: str, user_name: str
             result = inventory.set_stock(real_name, qty)
             if result:
                 prev = result.get("previous_stock", "?")
-                say(text=f":pencil2: Updated *{real_name}* stock: {prev} Ã¢ÂÂ *{int(qty)}*", thread_ts=thread_ts)
+                say(text=f":pencil2: Updated *{real_name}* stock: {prev} ÃÂ¢ÃÂÃÂ *{int(qty)}*", thread_ts=thread_ts)
                 threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()
                 return
         say(text=f":warning: Couldn't find *{matched}* in the catalog to update stock.", thread_ts=thread_ts)
@@ -1103,7 +1103,7 @@ def _handle_cmd_show_shopping_list(cmd: dict, say, client, thread_ts: str, user_
     items = inventory.get_shopping_list()
 
     if not items:
-        say(text=":white_check_mark: Everything's stocked up Ã¢ÂÂ nothing needs ordering right now!", thread_ts=thread_ts)
+        say(text=":white_check_mark: Everything's stocked up ÃÂ¢ÃÂÃÂ nothing needs ordering right now!", thread_ts=thread_ts)
         return
 
     lines = [":shopping_cart: *Items that need ordering:*\n"]
@@ -1119,13 +1119,13 @@ def _handle_cmd_show_shopping_list(cmd: dict, say, client, thread_ts: str, user_
         has_po = inventory.has_active_po(name)
         po_badge = "  :hourglass_flowing_sand: _PO active_" if has_po else ""
 
-        line = f"  :small_red_triangle_down: *{name}* Ã¢ÂÂ on hand: *{stock}* / min: *{threshold}*"
+        line = f"  :small_red_triangle_down: *{name}* ÃÂ¢ÃÂÃÂ on hand: *{stock}* / min: *{threshold}*"
         if reorder_qty:
-            line += f"  ÃÂ·  order *{reorder_qty}*"
+            line += f"  ÃÂÃÂ·  order *{reorder_qty}*"
         if url and vendor:
-            line += f"  ÃÂ·  <{url}|Buy from {vendor}>"
+            line += f"  ÃÂÃÂ·  <{url}|Buy from {vendor}>"
         elif vendor:
-            line += f"  ÃÂ·  Vendor: {vendor}"
+            line += f"  ÃÂÃÂ·  Vendor: {vendor}"
         line += po_badge
         lines.append(line)
 
@@ -1145,7 +1145,7 @@ def _handle_cmd_show_inventory(cmd: dict, say, client, thread_ts: str, user_name
 
         lines = [f":package: *Full Inventory Catalog* ({len(catalog)} items):\n"]
         for item in catalog:
-            lines.append(f"  Ã¢ÂÂ¢ {item['name']}" + (f"  _(alias: {item['alias']})_" if item.get("alias") else ""))
+            lines.append(f"  ÃÂ¢ÃÂÃÂ¢ {item['name']}" + (f"  _(alias: {item['alias']})_" if item.get("alias") else ""))
 
         sheet_url = os.environ.get("GOOGLE_SHEET_URL", "")
         if sheet_url:
@@ -1174,8 +1174,8 @@ def _handle_cmd_item_info(cmd: dict, say, client, thread_ts: str, user_name: str
     if details.get("category"):
         lines.append(f"  Category: {details['category']}")
     lines.append(f"  Current stock: *{details.get('current_stock', '?')}*")
-    lines.append(f"  Reorder threshold: {details.get('reorder_threshold', 'Ã¢ÂÂ')}")
-    lines.append(f"  Reorder quantity: {details.get('reorder_quantity', 'Ã¢ÂÂ')}")
+    lines.append(f"  Reorder threshold: {details.get('reorder_threshold', 'ÃÂ¢ÃÂÃÂ')}")
+    lines.append(f"  Reorder quantity: {details.get('reorder_quantity', 'ÃÂ¢ÃÂÃÂ')}")
     if details.get("preferred_vendor"):
         lines.append(f"  Vendor: {details['preferred_vendor']}")
     if details.get("vendor_url"):
@@ -1187,22 +1187,22 @@ def _handle_cmd_item_info(cmd: dict, say, client, thread_ts: str, user_name: str
 
 
 def _handle_cmd_help(cmd: dict, say, client, thread_ts: str, user_name: str):
-    """Show help Ã¢ÂÂ what the bot can do."""
+    """Show help ÃÂ¢ÃÂÃÂ what the bot can do."""
     say(
         text=(
             "Hey! :wave: I'm the SpotOn Inventory Bot. Here's what I can do:\n\n"
-            ":package: *Inventory tracking* Ã¢ÂÂ Post supply pickups or stock counts in #supplies-and-inventory and I log them automatically.\n"
-            ":shopping_cart: *Shopping list* Ã¢ÂÂ Ask me _\"what do we need to order?\"_ and I'll show low-stock items.\n"
-            ":heavy_plus_sign: *Add items* Ã¢ÂÂ _\"add vacuum to the list\"_ or _\"start tracking sponges, reorder at 5\"_\n"
-            ":link: *Update links* Ã¢ÂÂ _\"here's the amazon link for magic erasers: https://...\"_\n"
-            ":truck: *Set vendors* Ã¢ÂÂ _\"we buy lysol from Amazon now\"_\n"
-            ":pencil2: *Update items* Ã¢ÂÂ _\"set minimum for lysol to 5\"_ or _\"change the alias for toilet brush to tb\"_\n"
-            ":1234: *Set stock* Ã¢ÂÂ _\"we have 800 white rags\"_ or _\"set lysol stock to 12\"_\n"
-            ":wastebasket: *Remove items* Ã¢ÂÂ _\"remove vacuum from the list\"_\n"
-            ":mag: *Item details* Ã¢ÂÂ _\"tell me about scrubbing bubbles\"_ or _\"how many magic erasers do we have?\"_\n"
-            ":clipboard: *Full catalog* Ã¢ÂÂ _\"show me everything\"_ or _\"full inventory\"_\n\n"
-            "In #purchase_orders, I track orders too Ã¢ÂÂ just post when you've placed or received an order.\n"
-            "Just talk to me naturally Ã¢ÂÂ I'll figure out what you mean! :sparkles:"
+            ":package: *Inventory tracking* ÃÂ¢ÃÂÃÂ Post supply pickups or stock counts in #supplies-and-inventory and I log them automatically.\n"
+            ":shopping_cart: *Shopping list* ÃÂ¢ÃÂÃÂ Ask me _\"what do we need to order?\"_ and I'll show low-stock items.\n"
+            ":heavy_plus_sign: *Add items* ÃÂ¢ÃÂÃÂ _\"add vacuum to the list\"_ or _\"start tracking sponges, reorder at 5\"_\n"
+            ":link: *Update links* ÃÂ¢ÃÂÃÂ _\"here's the amazon link for magic erasers: https://...\"_\n"
+            ":truck: *Set vendors* ÃÂ¢ÃÂÃÂ _\"we buy lysol from Amazon now\"_\n"
+            ":pencil2: *Update items* ÃÂ¢ÃÂÃÂ _\"set minimum for lysol to 5\"_ or _\"change the alias for toilet brush to tb\"_\n"
+            ":1234: *Set stock* ÃÂ¢ÃÂÃÂ _\"we have 800 white rags\"_ or _\"set lysol stock to 12\"_\n"
+            ":wastebasket: *Remove items* ÃÂ¢ÃÂÃÂ _\"remove vacuum from the list\"_\n"
+            ":mag: *Item details* ÃÂ¢ÃÂÃÂ _\"tell me about scrubbing bubbles\"_ or _\"how many magic erasers do we have?\"_\n"
+            ":clipboard: *Full catalog* ÃÂ¢ÃÂÃÂ _\"show me everything\"_ or _\"full inventory\"_\n\n"
+            "In #purchase_orders, I track orders too ÃÂ¢ÃÂÃÂ just post when you've placed or received an order.\n"
+            "Just talk to me naturally ÃÂ¢ÃÂÃÂ I'll figure out what you mean! :sparkles:"
         ),
         thread_ts=thread_ts,
     )

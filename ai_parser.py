@@ -105,7 +105,7 @@ def parse_inventory_message(text: str, item_catalog: list[dict]) -> dict:
     dict  – parsed result with type, items, etc.
     """
     item_list_str = "\n".join(
-        f'  - "{item[\'alias\']}" \u2192 {item[\'name\']}'
+        f"  - \"{item['alias']}\" → {item['name']}"
         for item in item_catalog
     )
 
@@ -133,7 +133,7 @@ def parse_inventory_message(text: str, item_catalog: list[dict]) -> dict:
         logger.error(f"Failed to parse AI response as JSON: {e}\nRaw: {raw}")
         return {
             "type": "unclear",
-            "clarification_question": "I had trouble reading that \u2014 could you list the supplies you grabbed and how many of each?",
+            "clarification_question": "I had trouble reading that — could you list the supplies you grabbed and how many of each?",
             "summary": "Parse error",
         }
     except Exception as e:
@@ -160,7 +160,7 @@ def parse_po_message(text: str, active_pos: list[dict]) -> dict:
     dict  – parsed result with type, po_number, tracking, etc.
     """
     po_list_str = "\n".join(
-        f"  - {po[\'po_number\']}: {po.get(\'quantity\', \'?\')}x {po[\'item_name\']} from {po.get(\'vendor\', \'?\')} (status: {po.get(\'status\', \'?\')})"
+        f"  - {po['po_number']}: {po.get('quantity', '?')}x {po['item_name']} from {po.get('vendor', '?')} (status: {po.get('status', '?')})"
         for po in active_pos
     ) or "  (No active purchase orders)"
 
@@ -187,7 +187,7 @@ def parse_po_message(text: str, active_pos: list[dict]) -> dict:
         logger.error(f"Failed to parse PO AI response: {e}\nRaw: {raw}")
         return {
             "type": "unclear",
-            "clarification_question": "I couldn\'t quite understand that update. Could you clarify which order you\'re referring to and what the status is?",
+            "clarification_question": "I couldn't quite understand that update. Could you clarify which order you're referring to and what the status is?",
             "summary": "Parse error",
         }
     except Exception as e:

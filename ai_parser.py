@@ -34,11 +34,12 @@ RULES:
 8. "handful" or "a few" = 3. "a bunch" = 5. Use reasonable defaults.
 9. Ignore lines about rags (picking up / dropping off rags is not tracked).
 10. Ignore lines about non-inventory commentary like dates or signatures.
+11. If someone is doing a stock count / inventory count and reporting how many of each item are currently on hand (e.g., "we have 5 scrubbing bubbles, 10 magic erasers" or "stock count: scrubbing bubbles 5, lysol 3" or "counted 8 gloves large, 12 toilet brushes"), classify it as "stock_count". Key phrases: "we have", "stock count", "counted", "on hand", "in stock", "current count", "inventory count", "physical count", "update stock", "set stock". The quantities represent the TOTAL amount currently in the office, NOT what was taken.
 
 Respond ONLY with valid JSON matching this schema:
 {
-  "type": "supply_pickup" | "need_request" | "unclear" | "not_inventory",
-  "items": [                          // only for supply_pickup
+  "type": "supply_pickup" | "need_request" | "stock_count" | "unclear" | "not_inventory",
+  "items": [                          // for supply_pickup AND stock_count
     {
       "raw_name": "what they wrote",
       "matched_name": "closest inventory item name or null",
@@ -52,147 +53,3 @@ Respond ONLY with valid JSON matching this schema:
   "summary": "short plain-english summary of what happened"
 }
 """
-
-# ------------------------------------------------------------------ #
-#  Purchase order channel parser
-# ------------------------------------------------------------------ #
-PO_SYSTEM_PROMPT = """\
-You are the inventory assistant for Spot On Cleaners. Your job is to read messages in the
-#purchase_orders Slack channel and understand order-related updates.
-
-ACTIVE PURCHASE ORDERS:
-{po_list}
-
-RULES:
-1. Messages may confirm an order has been placed, arrived, been delivered, has tracking info, etc.
-2. Match the message to a known PO from the list above if possible.
-3. Extract any tracking numbers, delivery confirmations, or status updates.
-4. Classify messages as:
-   - "order_placed": Someone confirms they placed/submitted an order (status → "Ordered")
-   - "order_received": Supplies arrived / were delivered (status → "Delivered")
-   - "tracking_update": Tracking number or shipping update provided
-   - "order_update": General status update about an order
-   - "not_order": Not related to purchase orders
-   - "unclear": Can't determine which order or what the update is
-
-Respond ONLY with valid JSON matching this schema:
-{
-  "type": "order_placed" | "order_received" | "tracking_update" | "order_update" | "not_order" | "unclear",
-  "po_number": "PO-XXXX or null if not identified",
-  "item_name": "item name if identified",
-  "tracking_number": "tracking number if provided, else null",
-  "quantity_received": null or number,
-  "new_status": "Ordered" | "Shipped" | "Delivered" | "Cancelled" | null,
-  "clarification_question": "...",    // only for unclear
-  "summary": "short plain-english summary"
-}
-"""
-
-
-def parse_inventory_message(text: str, item_catalog: list[dict]) -> dict:
-    """
-    Send a Slack message to Claude for parsing as a supply/inventory message.
-
-    Parameters
-    ----------
-    text : str
-        The raw Slack message text.
-    item_catalog : list[dict]
-        Each dict has keys "name" and "alias".
-
-    Returns
-    -------
-    dict  – parsed result with type, items, etc.
-    """
-    item_list_str = "\n".join(
-        f"  - \"{item['alias']}\" → {item['name']}"
-        for item in item_catalog
-    )
-
-    try:
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1024,
-            system=SUPPLY_SYSTEM_PROMPT.replace("{item_list}", item_list_str),
-            messages=[{"role": "user", "content": text}],
-        )
-
-        raw = response.content[0].text.strip()
-        # Strip markdown code fences if present
-        if raw.startswith("```"):
-            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-            if raw.endswith("```"):
-                raw = raw[:-3]
-            raw = raw.strip()
-
-        result = json.loads(raw)
-        logger.info(f"AI parse result: {json.dumps(result, indent=2)}")
-        return result
-
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse AI response as JSON: {e}\nRaw: {raw}")
-        return {
-            "type": "unclear",
-            "clarification_question": "I had trouble reading that — could you list the supplies you grabbed and how many of each?",
-            "summary": "Parse error",
-        }
-    except Exception as e:
-        logger.error(f"AI parser error ({type(e).__name__}): {e}")
-        return {
-            "type": "not_inventory",
-            "summary": f"Error: {e}",
-        }
-
-
-def parse_po_message(text: str, active_pos: list[dict]) -> dict:
-    """
-    Parse a message from #purchase_orders for order confirmations/updates.
-
-    Parameters
-    ----------
-    text : str
-        The raw Slack message text.
-    active_pos : list[dict]
-        Active POs with keys: po_number, item_name, quantity, vendor, status.
-
-    Returns
-    -------
-    dict  – parsed result with type, po_number, tracking, etc.
-    """
-    po_list_str = "\n".join(
-        f"  - {po['po_number']}: {po.get('quantity', '?')}x {po['item_name']} from {po.get('vendor', '?')} (status: {po.get('status', '?')})"
-        for po in active_pos
-    ) or "  (No active purchase orders)"
-
-    try:
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1024,
-            system=PO_SYSTEM_PROMPT.replace("{po_list}", po_list_str),
-            messages=[{"role": "user", "content": text}],
-        )
-
-        raw = response.content[0].text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-            if raw.endswith("```"):
-                raw = raw[:-3]
-            raw = raw.strip()
-
-        result = json.loads(raw)
-        logger.info(f"PO parse result: {json.dumps(result, indent=2)}")
-        return result
-
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse PO AI response: {e}\nRaw: {raw}")
-        return {
-            "type": "unclear",
-            "clarification_question": "I couldn't quite understand that update. Could you clarify which order you're referring to and what the status is?",
-            "summary": "Parse error",
-        }
-    except Exception as e:
-        logger.error(f"PO AI parser error ({type(e).__name__}): {e}")
-        return {
-            "type": "not_order",
-            "summary": f"Error: {e}",
-        }

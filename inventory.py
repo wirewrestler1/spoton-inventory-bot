@@ -410,10 +410,14 @@ class InventoryManager:
                 else:
                     dot = ":large_green_circle:"
 
-                lines.append(f"  {dot} {item['item_name']}: *{stock}*")
+                if thresh_f > 0:
+                    lines.append(f"  {dot} {item['item_name']}: *{stock}*  ·  min: {int(thresh_f)}")
+                else:
+                    lines.append(f"  {dot} {item['item_name']}: *{stock}*")
             lines.append("")
 
         lines.append(":large_green_circle: Good  :large_yellow_circle: Low  :red_circle: Out")
+        lines.append("_Stock shown as current qty · minimum qty_")
         return "\n".join(lines)
 
     # ------------------------------------------------------------------ #

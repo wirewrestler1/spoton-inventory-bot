@@ -390,3 +390,151 @@ class InventoryManager:
 
         lines.append(":large_green_circle: Good  :large_yellow_circle: Low  :red_circle: Out")
         return "\n".join(lines)
+
+    # --------------------------------------------------------------------- #
+    #  Catalog management (add / update / remove items)
+    # ------------------------------------------------------------------ #
+    def add_item(
+        self,
+        item_name: str,
+        category: str = "",
+        slack_alias: str = "",
+        reorder_threshold: int = 0,
+        reorder_quantity: int = 0,
+        preferred_vendor: str = "",
+        vendor_url: str = "",
+        initial_stock: int = 0,
+    ) -> dict:
+        """Add a new item to the Inventory Master sheet. Returns the new item dict."""
+        ws = self._get_sheet("Inventory Master")
+        headers = ws.row_values(1)
+        rows = ws.get_all_records()
+
+        # Generate next Item ID (e.g. ITEM-042)
+        existing_ids = [r.get("Item ID", "") for r in rows if str(r.get("Item ID", "")).startswith("ITEM-")]
+        if existing_ids:
+            max_num = max(int(i.replace("ITEM-", "")) for i in existing_ids)
+            next_id = f"ITEM-{max_num + 1:03d}"
+        else:
+            next_id = "ITEM-001"
+
+        if not slack_alias:
+            slack_alias = item_name.lower()
+
+        # Build row matching header order
+        row_data = {
+            "Item ID": next_id,
+            "Category": category,
+            "Item Name": item_name,
+            "Slack Alias": slack_alias,
+            "Current Stock": initial_stock,
+            "Reorder Threshold": reorder_threshold,
+            "Reorder Quantity": reorder_quantity,
+            "Preferred Vendor": preferred_vendor,
+            "Vendor 1 URL": vendor_url,
+            "Vendor 2 URL": "",
+        }
+
+        new_row = [row_data.get(h, "") for h in headers]
+        ws.append_row(new_row, value_input_option="USER_ENTERED")
+        logger.info(f"Added new item: {next_id} — {item_name}")
+
+        return {
+            "item_id": next_id,
+            "item_name": item_name,
+            "category": category,
+            "slack_alias": slack_alias,
+        }
+
+    def update_item_field(self, item_name: str, field: str, value) -> dict | None:
+        """
+        Update a single field for an item in Inventory Master.
+        field can be: Preferred Vendor, Vendor 1 URL, Vendor 2 URL,
+        Reorder Threshold, Reorder Quantity, Category, Slack Alias, Item Name.
+        Returns updated item info or None if not found.
+        """
+        # Map friendly field names to column headers
+        field_map = {
+            "preferred_vendor": "Preferred Vendor",
+            "vendor_url": "Vendor 1 URL",
+            "vendor_1_url": "Vendor 1 URL",
+            "vendor_2_url": "Vendor 2 URL",
+            "reorder_threshold": "Reorder Threshold",
+            "reorder_quantity": "Reorder Quantity",
+            "category": "Category",
+            "slack_alias": "Slack Alias",
+            "item_name": "Item Name",
+        }
+
+        col_header = field_map.get(field.lower(), field)
+
+        ws = self._get_sheet("Inventory Master")
+        rows = ws.get_all_records()
+        headers = ws.row_values(1)
+
+        if col_header not in headers:
+            logger.error(f"Column not found: {col_header}")
+            return None
+
+        col_idx = headers.index(col_header) + 1
+
+        for idx, row in enumerate(rows):
+            if row.get("Item Name", "").lower() == item_name.lower():
+                cell_row = idx + 2
+                old_value = row.get(col_header, "")
+                ws.update_cell(cell_row, col_idx, value)
+                logger.info(f"Updated {item_name} [{col_header}]: {old_value} → {value}")
+
+                return {
+                    "item_name": row.get("Item Name", ""),
+                    "field": col_header,
+                    "old_value": old_value,
+                    "new_value": value,
+                }
+
+        logger.warning(f"Item not found for update: {item_name}")
+        return None
+
+    def delete_item(self, item_name: str) -> dict | None:
+        """Delete an item row from Inventory Master. Returns the deleted item info."""
+        ws = self._get_sheet("Inventory Master")
+        rows = ws.get_all_records()
+
+        for idx, row in enumerate(rows):
+            if row.get("Item Name", "").lower() == item_name.lower():
+                cell_row = idx + 2
+                item_info = {
+                    "item_name": row.get("Item Name", ""),
+                    "item_id": row.get("Item ID", ""),
+                    "category": row.get("Category", ""),
+                }
+                ws.delete_rows(cell_row)
+                logger.info(f"Deleted item: {item_info['item_name']}")
+                return item_info
+
+        logger.warning(f"Item not found for delete: {item_name}")
+        return None
+
+    def get_shopping_list(self) -> list[dict]:
+        """Get all items at or below their reorder threshold (need to be ordered)."""
+        items = self.get_all_items()
+        needs_order = []
+
+        for item in items:
+            stock = item["current_stock"]
+            threshold = item["reorder_threshold"]
+            try:
+                stock_f = float(stock) if stock != "" else 0
+                thresh_f = float(threshold) if threshold != "" else 0
+            except (ValueError, TypeError):
+                stock_f, thresh_f = 0, 0
+
+            if thresh_f > 0 and stock_f <= thresh_f:
+                needs_order.append(item)
+
+        return needs_order
+
+    def get_item_details(self, item_name: str) -> dict | None:
+        """Get full details for a single item by name (fuzzy match)."""
+        item = self.find_item_by_alias(item_name)
+        return item

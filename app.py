@@ -153,13 +153,15 @@ def _get_active_pos() -> list[dict]:
 #  Periodic tasks
 # ------------------------------------------------------------------ #
 def _periodic_summary_refresh():
-    """Background thread that refreshes the pinned summary every 5 minutes."""
+    """Background thread that refreshes the pinned summary and syncs shopping list every 5 minutes."""
     time.sleep(15)
     while True:
         try:
             from slack_sdk import WebClient
             client = WebClient(token=os.environ["SLACK_BOT_TOKEN"])
             update_pinned_summary(client)
+            # Also sync shopping list to ClickUp
+            _sync_shopping_list_to_clickup(client)
         except Exception as e:
             logger.error(f"Periodic refresh error: {e}")
         time.sleep(300)
@@ -222,6 +224,145 @@ def _notify_status_change(client, task_name: str, task_id: str,
         logger.info(f"Notified status change: {task_name} → {new_status}")
     except Exception as e:
         logger.error(f"Failed to notify status change: {e}")
+
+    # If task was completed, handle PO delivery + restock
+    if new_status in ("complete", "delivered", "closed"):
+        _handle_clickup_task_completed(client, task_id, task_name)
+
+
+def _handle_clickup_task_completed(client, task_id: str, task_name: str):
+    """When a ClickUp task is marked complete, update the PO and restock inventory."""
+    try:
+        po_data = inventory.find_po_by_clickup_task_id(task_id)
+        if not po_data:
+            logger.info(f"No PO found for completed ClickUp task {task_id}")
+            return
+
+        po_number = po_data["po_number"]
+        item_name = po_data.get("item_name", "")
+        quantity = po_data.get("quantity", 0)
+        current_status = po_data.get("status", "").lower()
+
+        # Only process if not already delivered
+        if current_status == "delivered":
+            logger.info(f"PO {po_number} already marked delivered, skipping")
+            return
+
+        today = datetime.date.today().strftime("%m/%d/%Y")
+
+        # Mark PO as delivered
+        inventory.update_po_status(po_number, "Delivered", delivery_date=today)
+
+        # Restock inventory
+        if item_name and quantity:
+            try:
+                qty = int(quantity)
+            except (ValueError, TypeError):
+                qty = 0
+            if qty > 0:
+                inventory.increment_stock(item_name, qty)
+
+        # Notify in Slack
+        restock_msg = f"Restocked *{item_name}* (+{quantity}). " if item_name and quantity else ""
+        client.chat_postMessage(
+            channel=PO_CHANNEL,
+            text=(
+                f":tada: *{po_number}* automatically marked delivered (ClickUp task completed).\n"
+                f"{restock_msg}Inventory summary will update shortly."
+            ),
+        )
+
+        # Refresh pinned summary
+        threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()
+
+        logger.info(f"Auto-completed PO {po_number} from ClickUp task {task_id}")
+
+    except Exception as e:
+        logger.error(f"Error handling ClickUp task completion for {task_id}: {e}")
+
+
+def _sync_shopping_list_to_clickup(client):
+    """
+    Sync the shopping list to ClickUp: create PO tasks for any items that are
+    below reorder threshold and don't already have an active PO.
+    """
+    try:
+        shopping_list = inventory.get_shopping_list()
+        if not shopping_list:
+            logger.info("Shopping list sync: nothing needs ordering")
+            return
+
+        created_count = 0
+        for item in shopping_list:
+            item_name = item.get("item_name", "")
+            if not item_name:
+                continue
+
+            # Skip if there's already an active PO for this item
+            if inventory.has_active_po(item_name):
+                continue
+
+            reorder_qty = item.get("reorder_quantity", 0)
+            try:
+                reorder_qty = int(reorder_qty) if reorder_qty else 10
+            except (ValueError, TypeError):
+                reorder_qty = 10
+
+            vendor = item.get("preferred_vendor", "")
+            product_url = item.get("vendor_1_url", "")
+            stock = item.get("current_stock", 0)
+            threshold = item.get("reorder_threshold", 0)
+
+            # Generate PO number
+            po_number = inventory.get_next_po_number()
+
+            # Create ClickUp task
+            task = clickup.create_po_task(
+                item_name=item_name,
+                quantity=reorder_qty,
+                vendor=vendor,
+                product_url=product_url,
+                po_number=po_number,
+            )
+            task_id = task["id"] if task else ""
+            task_url = f"https://app.clickup.com/t/{task_id}" if task_id else ""
+
+            # Log PO in Google Sheets
+            inventory.log_purchase_order(
+                po_number=po_number,
+                item_name=item_name,
+                quantity=reorder_qty,
+                vendor=vendor,
+                product_url=product_url,
+                clickup_task_id=task_id,
+            )
+
+            # Post alert to #purchase_orders
+            task_link = f"\n:link: <{task_url}|View ClickUp Task>" if task_url else ""
+            vendor_link = ""
+            if product_url and vendor:
+                vendor_link = f"\n:shopping_cart: <{product_url}|Order from {vendor}>"
+            elif vendor:
+                vendor_link = f"\n:shopping_cart: Vendor: {vendor}"
+
+            alert_msg = (
+                f":rotating_light: *Reorder Alert — {po_number}*\n\n"
+                f"*{item_name}* is low (stock: {stock}, min: {threshold}).\n"
+                f"*Order {reorder_qty}x* to restock."
+                f"{vendor_link}"
+                f"{task_link}\n\n"
+                f"_Assigned to Frankie. When ordered, reply here with a confirmation._"
+            )
+
+            client.chat_postMessage(channel=PO_CHANNEL, text=alert_msg)
+            created_count += 1
+            logger.info(f"Shopping list sync: created {po_number} for {item_name}")
+
+        if created_count > 0:
+            logger.info(f"Shopping list sync: created {created_count} new PO(s)")
+
+    except Exception as e:
+        logger.error(f"Shopping list sync error: {e}")
 
 
 # ------------------------------------------------------------------ #
@@ -964,16 +1105,24 @@ def _handle_cmd_show_shopping_list(cmd: dict, say, client, thread_ts: str, user_
         threshold = item.get("reorder_threshold", 0)
         reorder_qty = item.get("reorder_quantity", 0)
         vendor = item.get("preferred_vendor", "")
-        url = item.get("vendor_url", "")
+        url = item.get("vendor_1_url", "")
 
-        line = f"  :small_red_triangle_down: *{name}* — stock: {stock} (threshold: {threshold})"
+        # Check if there's already an active PO
+        has_po = inventory.has_active_po(name)
+        po_badge = "  :hourglass_flowing_sand: _PO active_" if has_po else ""
+
+        line = f"  :small_red_triangle_down: *{name}* — on hand: *{stock}* / min: *{threshold}*"
         if reorder_qty:
-            line += f", order {reorder_qty}"
+            line += f"  ·  order *{reorder_qty}*"
         if url and vendor:
-            line += f" · <{url}|Buy from {vendor}>"
+            line += f"  ·  <{url}|Buy from {vendor}>"
         elif vendor:
-            line += f" · Vendor: {vendor}"
+            line += f"  ·  Vendor: {vendor}"
+        line += po_badge
         lines.append(line)
+
+    lines.append(f"\n_{len(items)} item{'s' if len(items) != 1 else ''} below minimum._")
+    lines.append("_Tip: say_ \"set minimum for [item] to [number]\" _to adjust._")
 
     say(text="\n".join(lines), thread_ts=thread_ts)
 
@@ -1039,7 +1188,8 @@ def _handle_cmd_help(cmd: dict, say, client, thread_ts: str, user_name: str):
             ":heavy_plus_sign: *Add items* — _\"add vacuum to the list\"_ or _\"start tracking sponges, reorder at 5\"_\n"
             ":link: *Update links* — _\"here's the amazon link for magic erasers: https://...\"_\n"
             ":truck: *Set vendors* — _\"we buy lysol from Amazon now\"_\n"
-            ":pencil2: *Update items* — _\"set reorder threshold for lysol to 5\"_ or _\"change the alias for toilet brush to tb\"_\n"
+            ":pencil2: *Update items* — _\"set minimum for lysol to 5\"_ or _\"change the alias for toilet brush to tb\"_\n"
+            ":1234: *Set stock* — _\"we have 800 white rags\"_ or _\"set lysol stock to 12\"_\n"
             ":wastebasket: *Remove items* — _\"remove vacuum from the list\"_\n"
             ":mag: *Item details* — _\"tell me about scrubbing bubbles\"_ or _\"how many magic erasers do we have?\"_\n"
             ":clipboard: *Full catalog* — _\"show me everything\"_ or _\"full inventory\"_\n\n"

@@ -143,6 +143,42 @@ class InventoryManager:
         logger.warning(f"Item not found for decrement: {item_name}")
         return None
 
+    def set_stock(self, item_name: str, quantity: float) -> dict | None:
+        """
+        Set stock to an exact quantity (for physical counts).
+        Returns item dict with old/new stock, or None if not found.
+        """
+        ws = self._get_sheet("Inventory Master")
+        rows = ws.get_all_records()
+
+        for idx, row in enumerate(rows):
+            if row.get("Item Name", "").lower() == item_name.lower():
+                current = row.get("Current Stock", 0)
+                try:
+                    current_f = float(current) if current != "" else 0
+                except (ValueError, TypeError):
+                    current_f = 0
+
+                cell_row = idx + 2
+                headers = ws.row_values(1)
+                try:
+                    stock_col = headers.index("Current Stock") + 1
+                except ValueError:
+                    logger.error("Could not find 'Current Stock' column")
+                    return None
+
+                ws.update_cell(cell_row, stock_col, quantity)
+                logger.info(f"Set stock {item_name}: {current_f} → {quantity}")
+
+                return {
+                    "item_name": row.get("Item Name", ""),
+                    "previous_stock": current_f,
+                    "new_stock": quantity,
+                }
+
+        logger.warning(f"Item not found for set_stock: {item_name}")
+        return None
+
     def increment_stock(self, item_name: str, quantity: int) -> bool:
         """Increment stock when an order is received."""
         ws = self._get_sheet("Inventory Master")

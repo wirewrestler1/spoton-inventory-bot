@@ -279,6 +279,9 @@ def handle_supply_message(event, say, client):
     if msg_type == "supply_pickup":
         _handle_pickup(result, say, client, message_ts, user_name)
 
+    elif msg_type == "stock_count":
+        _handle_stock_count(result, say, client, message_ts, user_name)
+
     elif msg_type == "need_request":
         _handle_need(result, say, message_ts, user_name)
 
@@ -335,6 +338,48 @@ def _handle_pickup(result: dict, say, client, thread_ts: str, user_name: str):
             args=(client, stock_info),
             daemon=True,
         ).start()
+
+    # Refresh pinned summary
+    threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()
+
+
+def _handle_stock_count(result: dict, say, client, thread_ts: str, user_name: str):
+    """Process a physical stock count: set exact quantities in the sheet."""
+    items = result.get("items", [])
+    if not items:
+        return
+
+    lines = []
+    for item in items:
+        qty = item.get("quantity", 0)
+        matched_name = item.get("matched_name")
+        raw_name = item.get("raw_name", "???")
+        conf = item.get("confidence", "high")
+
+        display_name = matched_name or raw_name
+
+        if matched_name:
+            set_result = inventory.set_stock(matched_name, qty)
+            if set_result:
+                prev = set_result["previous_stock"]
+                diff = qty - prev
+                if diff > 0:
+                    arrow = f":arrow_up: (+{diff})"
+                elif diff < 0:
+                    arrow = f":arrow_down: ({diff})"
+                else:
+                    arrow = ":left_right_arrow: (no change)"
+                lines.append(f"  :white_check_mark: *{display_name}*: {prev} → *{qty}* {arrow}")
+            else:
+                lines.append(f"  :warning: *{display_name}*: couldn't update")
+        else:
+            suffix = ""
+            if conf == "low":
+                suffix = " _(couldn't match to inventory)_"
+            lines.append(f"  :question: *{raw_name}*: {qty}{suffix}")
+
+    msg = f":clipboard: Stock count updated, {user_name}!\n" + "\n".join(lines)
+    say(text=msg, thread_ts=thread_ts)
 
     # Refresh pinned summary
     threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()
@@ -447,6 +492,8 @@ def handle_supply_thread_reply(event, say, client):
 
     if msg_type == "supply_pickup":
         _handle_pickup(result, say, client, thread_ts, user_name)
+    elif msg_type == "stock_count":
+        _handle_stock_count(result, say, client, thread_ts, user_name)
     elif msg_type == "unclear":
         _handle_unclear(result, say, thread_ts, user_name)
     # Otherwise ignore — they might just be chatting in the thread

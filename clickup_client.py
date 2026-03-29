@@ -139,6 +139,25 @@ class ClickUpClient:
             logger.error(f"Failed to get ClickUp tasks: {e}")
             return []
 
+    def get_all_tasks(self, include_closed: bool = True) -> list[dict]:
+        """Get all tasks from the PO list (including closed if requested)."""
+        try:
+            params = {
+                "archived": "false",
+                "include_closed": "true" if include_closed else "false",
+            }
+            resp = requests.get(
+                f"{CLICKUP_API}/list/{self.list_id}/task",
+                headers=self.headers,
+                params=params,
+                timeout=15,
+            )
+            resp.raise_for_status()
+            return resp.json().get("tasks", [])
+        except Exception as e:
+            logger.error(f"Failed to get all ClickUp tasks: {e}")
+            return []
+
     def get_task(self, task_id: str) -> dict | None:
         """Get a single task by ID."""
         try:

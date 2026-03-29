@@ -1213,8 +1213,8 @@ def _handle_cmd_help(cmd: dict, say, client, thread_ts: str, user_name: str):
 # ------------------------------------------------------------------ #
 if __name__ == "__main__":
     # Start background threads
-    threading.Thread(target=_periodic_summary_refresh, daemon=True).start()
-    threading.Thread(target=_clickup_status_poller, daemon=True).start()
+    # threading.Thread(target=_periodic_summary_refresh, daemon=True).start()  # DISABLED - was causing spam
+    # threading.Thread(target=_clickup_status_poller, daemon=True).start()  # DISABLED - was causing spam
 
     logger.info(":zap: SpotOn Inventory Bot starting up...")
     logger.info(f"  Watching: #{SUPPLIES_CHANNEL} and #{PO_CHANNEL}")

@@ -704,7 +704,7 @@ def handle_po_thread_reply(event, say, client):
 
 # ------------------------------------------------------------------ #
 #  Pending confirmations  (user_id → command dict)
-# --------------------------------------------------------------------- #
+# ------------------------------------------------------------------ #
 _pending_confirmations: dict[str, dict] = {}
 _confirmation_lock = threading.Lock()
 
@@ -777,6 +777,7 @@ def _route_bot_command(cmd: dict, cmd_type: str, say, client, thread_ts: str, us
         "update_link": _handle_cmd_update_link,
         "set_vendor": _handle_cmd_set_vendor,
         "update_item": _handle_cmd_update_item,
+        "set_stock": _handle_cmd_set_stock,
         "remove_item": _handle_cmd_remove_item,
         "show_shopping_list": _handle_cmd_show_shopping_list,
         "show_inventory": _handle_cmd_show_inventory,
@@ -893,6 +894,44 @@ def _handle_cmd_update_item(cmd: dict, say, client, thread_ts: str, user_name: s
         say(text=f":pencil2: Updated *{matched}* — set *{field}* to *{value}*.", thread_ts=thread_ts)
     else:
         say(text=f":warning: Couldn't update *{matched}*. Make sure the item exists and the field is valid.", thread_ts=thread_ts)
+
+
+def _handle_cmd_set_stock(cmd: dict, say, client, thread_ts: str, user_name: str):
+    """Set stock count for an item (physical count / correction)."""
+    matched = cmd.get("matched_name") or cmd.get("item_name", "")
+    quantity = cmd.get("quantity")
+
+    if not matched:
+        say(text=":thinking_face: Which item are you updating the stock for?", thread_ts=thread_ts)
+        return
+    if quantity is None:
+        say(text=f":thinking_face: How many *{matched}* do we have? Give me a number.", thread_ts=thread_ts)
+        return
+
+    try:
+        qty = float(quantity)
+    except (ValueError, TypeError):
+        say(text=f":warning: I couldn't parse `{quantity}` as a number.", thread_ts=thread_ts)
+        return
+
+    result = inventory.set_stock(matched, qty)
+    if result:
+        prev = result.get("previous_stock", "?")
+        say(text=f":pencil2: Updated *{matched}* stock: {prev} → *{int(qty)}*", thread_ts=thread_ts)
+        # Refresh pinned summary since stock changed
+        threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()
+    else:
+        # Try fuzzy match via find_item_by_alias
+        item = inventory.find_item_by_alias(matched)
+        if item:
+            real_name = item.get("item_name", matched)
+            result = inventory.set_stock(real_name, qty)
+            if result:
+                prev = result.get("previous_stock", "?")
+                say(text=f":pencil2: Updated *{real_name}* stock: {prev} → *{int(qty)}*", thread_ts=thread_ts)
+                threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()
+                return
+        say(text=f":warning: Couldn't find *{matched}* in the catalog to update stock.", thread_ts=thread_ts)
 
 
 def _handle_cmd_remove_item(cmd: dict, say, client, thread_ts: str, user_name: str):

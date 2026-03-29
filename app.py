@@ -281,7 +281,7 @@ def _handle_clickup_task_completed(client, task_id: str, task_name: str):
         )
 
         # Refresh pinned summary
-        threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()
+        # threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()  # DISABLED - fixing spam bug
 
         logger.info(f"Auto-completed PO {po_number} from ClickUp task {task_id}")
 
@@ -496,7 +496,7 @@ def _handle_pickup(result: dict, say, client, thread_ts: str, user_name: str):
         ).start()
 
     # Refresh pinned summary
-    threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()
+    # threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()  # DISABLED - fixing spam bug
 
 
 def _handle_stock_count(result: dict, say, client, thread_ts: str, user_name: str):
@@ -538,7 +538,7 @@ def _handle_stock_count(result: dict, say, client, thread_ts: str, user_name: st
     say(text=msg, thread_ts=thread_ts)
 
     # Refresh pinned summary
-    threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()
+    # threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()  # DISABLED - fixing spam bug
 
 
 def _process_reorder(client, stock_info: dict):
@@ -760,7 +760,7 @@ def _handle_order_received(result: dict, say, client, thread_ts: str, user_name:
         )
 
         # Refresh pinned summary
-        threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()
+        # threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()  # DISABLED - fixing spam bug
 
     else:
         say(
@@ -987,7 +987,7 @@ def _handle_cmd_add_item(cmd: dict, say, client, thread_ts: str, user_name: str)
     say(text=msg, thread_ts=thread_ts)
 
     # Refresh pinned summary since catalog changed
-    threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()
+    # threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()  # DISABLED - fixing spam bug
 
 
 def _handle_cmd_update_link(cmd: dict, say, client, thread_ts: str, user_name: str):
@@ -1068,7 +1068,7 @@ def _handle_cmd_set_stock(cmd: dict, say, client, thread_ts: str, user_name: str
         prev = result.get("previous_stock", "?")
         say(text=f":pencil2: Updated *{matched}* stock: {prev} ÃÂ¢ÃÂÃÂ *{int(qty)}*", thread_ts=thread_ts)
         # Refresh pinned summary since stock changed
-        threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()
+        # threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()  # DISABLED - fixing spam bug
     else:
         # Try fuzzy match via find_item_by_alias
         item = inventory.find_item_by_alias(matched)
@@ -1078,7 +1078,7 @@ def _handle_cmd_set_stock(cmd: dict, say, client, thread_ts: str, user_name: str
             if result:
                 prev = result.get("previous_stock", "?")
                 say(text=f":pencil2: Updated *{real_name}* stock: {prev} ÃÂ¢ÃÂÃÂ *{int(qty)}*", thread_ts=thread_ts)
-                threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()
+                # threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()  # DISABLED - fixing spam bug
                 return
         say(text=f":warning: Couldn't find *{matched}* in the catalog to update stock.", thread_ts=thread_ts)
 
@@ -1093,7 +1093,7 @@ def _handle_cmd_remove_item(cmd: dict, say, client, thread_ts: str, user_name: s
     result = inventory.delete_item(matched)
     if result:
         say(text=f":wastebasket: Removed *{matched}* from the inventory catalog.", thread_ts=thread_ts)
-        threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()
+        # threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()  # DISABLED - fixing spam bug
     else:
         say(text=f":warning: Couldn't find *{matched}* to remove.", thread_ts=thread_ts)
 

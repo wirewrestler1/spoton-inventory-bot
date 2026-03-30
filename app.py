@@ -2,9 +2,9 @@
 SpotOn Inventory Bot - AI-powered Slack bot for the full supply pipeline.
 
 Replaces all 3 Zapier Zaps:
-  Zap 1: Parses supply intake ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ decrements stock ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ triggers reorder alerts
+  Zap 1: Parses supply intake ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ decrements stock ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ triggers reorder alerts
   Zap 2: Creates POs in Google Sheets + ClickUp tasks
-  Zap 3: Handles order confirmations ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ updates PO log + ClickUp
+  Zap 3: Handles order confirmations ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ updates PO log + ClickUp
 
 Plus new capabilities:
  - AI-powered natural language understanding with clarification
@@ -261,12 +261,12 @@ def _notify_status_change(client, task_name: str, task_id: str,
 
     msg = (
         f"{emoji} *Task Update:* {task_name}\n"
-        f"Status changed: _{old_status}_ ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{new_status}*{link}"
+        f"Status changed: _{old_status}_ ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{new_status}*{link}"
     )
 
     try:
         client.chat_postMessage(channel=PO_CHANNEL, text=msg)
-        logger.info(f"Notified status change: {task_name} ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ {new_status}")
+        logger.info(f"Notified status change: {task_name} ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ {new_status}")
     except Exception as e:
         logger.error(f"Failed to notify status change: {e}")
 
@@ -477,6 +477,9 @@ def handle_supply_message(event, say, client):
     if msg_type == "supply_pickup":
         _handle_pickup(result, say, client, message_ts, user_name)
 
+    elif msg_type == "supply_addition":
+        _handle_supply_addition(result, say, client, message_ts, user_name)
+
     elif msg_type == "stock_count":
         _handle_stock_count(result, say, client, message_ts, user_name)
 
@@ -486,7 +489,7 @@ def handle_supply_message(event, say, client):
     elif msg_type == "unclear":
         _handle_unclear(result, say, message_ts, user_name)
 
-    # "not_inventory" ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ ignore silently
+    # "not_inventory" ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ ignore silently
 
 
 def _handle_pickup(result: dict, say, client, thread_ts: str, user_name: str):
@@ -512,15 +515,20 @@ def _handle_pickup(result: dict, say, client, thread_ts: str, user_name: str):
         elif conf == "medium":
             suffix = "  _(I think)_"
 
-        lines.append(f"  :white_check_mark: *{qty}x* {display_name}{suffix}")
-
         # Decrement stock in Google Sheets
         if matched_name:
             stock_result = inventory.decrement_stock(matched_name, qty)
-            if stock_result and stock_result["needs_reorder"]:
-                reorder_items.append(stock_result)
+            if stock_result:
+                prev = stock_result.get("previous_stock", "?")
+                new_qty = stock_result.get("new_stock", "?")
+                lines.append(f"  :small_red_triangle_down: Removed *{qty}x* {display_name} from stock  (*{prev}* \u2192 *{new_qty}*){suffix}")
+                if stock_result["needs_reorder"]:
+                    reorder_items.append({"item_name": matched_name, **stock_result})
+            else:
+                lines.append(f"  :warning: Couldn't find *{display_name}* in inventory{suffix}")
+        else:
+            lines.append(f"  :grey_question: *{qty}x* {display_name} \u2014 not matched to inventory{suffix}")
 
-    # Confirm in thread
     msg = f"Got it, {user_name}! Logged:\n" + "\n".join(lines)
 
     if reorder_items:
@@ -536,6 +544,51 @@ def _handle_pickup(result: dict, say, client, thread_ts: str, user_name: str):
             args=(client, stock_info),
             daemon=True,
         ).start()
+
+    # Update the canvas dashboard
+    try:
+        update_canvas(inventory)
+    except Exception as uc_err:
+        logger.error(f"Canvas update failed: {uc_err}")
+
+
+def _handle_supply_addition(result: dict, say, client, thread_ts: str, user_name: str):
+    """Process a supply addition: someone bought/added/restocked items. INCREMENT stock."""
+    items = result.get("items", [])
+    if not items:
+        return
+
+    lines = []
+
+    for item in items:
+        qty = item.get("quantity", 1)
+        matched_name = item.get("matched_name")
+        raw_name = item.get("raw_name", "???")
+        conf = item.get("confidence", "high")
+
+        display_name = matched_name or raw_name
+
+        suffix = ""
+        if conf == "low":
+            suffix = "  _(best guess - correct me if wrong!)_"
+        elif conf == "medium":
+            suffix = "  _(I think)_"
+
+        # INCREMENT stock in Google Sheets
+        if matched_name:
+            success = inventory.increment_stock(matched_name, qty)
+            if success:
+                item_info = inventory.find_item_by_alias(matched_name)
+                new_total = item_info.get("current_stock", "?") if item_info else "?"
+                prev = int(new_total) - qty if str(new_total).isdigit() else "?"
+                lines.append(f"  :chart_with_upwards_trend: Added *{qty}x* {display_name} to stock  (*{prev}* \u2192 *{new_total}*){suffix}")
+            else:
+                lines.append(f"  :warning: Couldn't find *{display_name}* in inventory to update{suffix}")
+        else:
+            lines.append(f"  :grey_question: *{qty}x* {display_name} \u2014 not matched to inventory{suffix}")
+
+    msg = f"Nice, {user_name}! Stock updated:\n" + "\n".join(lines)
+    say(text=msg, thread_ts=thread_ts)
 
     # Update the canvas dashboard
     try:
@@ -570,7 +623,7 @@ def _handle_stock_count(result: dict, say, client, thread_ts: str, user_name: st
                     arrow = f":arrow_down: ({diff})"
                 else:
                     arrow = ":left_right_arrow: (no change)"
-                lines.append(f"  :white_check_mark: *{display_name}*: {prev} ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{qty}* {arrow}")
+                lines.append(f"  :white_check_mark: *{display_name}*: {prev} ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{qty}* {arrow}")
             else:
                 lines.append(f"  :warning: *{display_name}*: couldn't update")
         else:
@@ -703,6 +756,8 @@ def handle_supply_thread_reply(event, say, client):
 
         if msg_type == "supply_pickup":
             _handle_pickup(result, say, client, thread_ts, user_name)
+        elif msg_type == "supply_addition":
+            _handle_supply_addition(result, say, client, thread_ts, user_name)
         elif msg_type == "stock_count":
             _handle_stock_count(result, say, client, thread_ts, user_name)
         elif msg_type == "unclear":
@@ -748,7 +803,7 @@ def handle_po_message(event, say, client):
         )
         say(text=f"Hey {user_name} - {question}", thread_ts=message_ts)
 
-    # "not_order" ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ ignore silently
+    # "not_order" ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ ignore silently
 
 
 def _handle_order_placed(result: dict, say, client, thread_ts: str, user_name: str):
@@ -872,7 +927,7 @@ def _handle_order_update(result: dict, say, client, thread_ts: str, user_name: s
             )
 
         say(
-            text=f":arrows_counterclockwise: Updated *{po_number}* ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{new_status}*",
+            text=f":arrows_counterclockwise: Updated *{po_number}* ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{new_status}*",
             thread_ts=thread_ts,
         )
     elif summary:
@@ -910,7 +965,7 @@ def handle_po_thread_reply(event, say, client):
 
 
 # ------------------------------------------------------------------ #
-#  Pending confirmations  (user_id ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ command dict)
+#  Pending confirmations  (user_id ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ command dict)
 # ------------------------------------------------------------------ #
 _pending_confirmations: dict[str, dict] = {}
 _confirmation_lock = threading.Lock()
@@ -1097,7 +1152,7 @@ def _handle_cmd_add_item(cmd: dict, say, client, thread_ts: str, user_name: str)
     if cmd.get("reorder_threshold"):
         details.append(f"Reorder at: {cmd['reorder_threshold']}")
     if details:
-        msg += "\n" + " ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ· ".join(details)
+        msg += "\n" + " ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ· ".join(details)
 
     say(text=msg, thread_ts=thread_ts)
 
@@ -1181,7 +1236,7 @@ def _handle_cmd_set_stock(cmd: dict, say, client, thread_ts: str, user_name: str
     result = inventory.set_stock(matched, qty)
     if result:
         prev = result.get("previous_stock", "?")
-        say(text=f":pencil2: Updated *{matched}* stock: {prev} ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{int(qty)}*", thread_ts=thread_ts)
+        say(text=f":pencil2: Updated *{matched}* stock: {prev} ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{int(qty)}*", thread_ts=thread_ts)
         # Update the canvas dashboard
         try:
             update_canvas(inventory)
@@ -1195,7 +1250,7 @@ def _handle_cmd_set_stock(cmd: dict, say, client, thread_ts: str, user_name: str
             result = inventory.set_stock(real_name, qty)
             if result:
                 prev = result.get("previous_stock", "?")
-                say(text=f":pencil2: Updated *{real_name}* stock: {prev} ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{int(qty)}*", thread_ts=thread_ts)
+                say(text=f":pencil2: Updated *{real_name}* stock: {prev} ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{int(qty)}*", thread_ts=thread_ts)
                 # threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()  # DISABLED - fixing spam bug
                 return
         say(text=f":warning: Couldn't find *{matched}* in the catalog to update stock.", thread_ts=thread_ts)
@@ -1239,11 +1294,11 @@ def _handle_cmd_show_shopping_list(cmd: dict, say, client, thread_ts: str, user_
 
         line = f"  :small_red_triangle_down: *{name}* - on hand: *{stock}* / min: *{threshold}*"
         if reorder_qty:
-            line += f"  ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ·  order *{reorder_qty}*"
+            line += f"  ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ·  order *{reorder_qty}*"
         if url and vendor:
-            line += f"  ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ·  <{url}|Buy from {vendor}>"
+            line += f"  ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ·  <{url}|Buy from {vendor}>"
         elif vendor:
-            line += f"  ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ·  Vendor: {vendor}"
+            line += f"  ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ·  Vendor: {vendor}"
         line += po_badge
         lines.append(line)
 
@@ -1263,7 +1318,7 @@ def _handle_cmd_show_inventory(cmd: dict, say, client, thread_ts: str, user_name
 
         lines = [f":package: *Full Inventory Catalog* ({len(catalog)} items):\n"]
         for item in catalog:
-            lines.append(f"  ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ {item['name']}" + (f"  _(alias: {item['alias']})_" if item.get("alias") else ""))
+            lines.append(f"  ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ {item['name']}" + (f"  _(alias: {item['alias']})_" if item.get("alias") else ""))
 
         sheet_url = os.environ.get("GOOGLE_SHEET_URL", "")
         if sheet_url:

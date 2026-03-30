@@ -20,7 +20,7 @@ You are the inventory assistant for Spot On Cleaners, a cleaning company in Lake
 Your job is to read Slack messages from cleaning staff and determine what supplies they picked up,
 dropped off, or are requesting.
 
-KNOWN INVENTORY ITEMS (alias Ã¢ÂÂ full name):
+KNOWN INVENTORY ITEMS (alias ÃÂ¢ÃÂÃÂ full name):
 {item_list}
 
 RULES:
@@ -117,10 +117,10 @@ def parse_inventory_message(text: str, item_catalog: list[dict], thread_context:
 
     Returns
     -------
-    dict  Ã¢ÂÂ parsed result with type, items, etc.
+    dict  ÃÂ¢ÃÂÃÂ parsed result with type, items, etc.
     """
     item_list_str = "\n".join(
-        f"  - \"{item['alias']}\" Ã¢ÂÂ {item['name']}"
+        f"  - \"{item['alias']}\" ÃÂ¢ÃÂÃÂ {item['name']}"
         for item in item_catalog
     )
 
@@ -172,7 +172,7 @@ def parse_po_message(text: str, active_pos: list[dict]) -> dict:
 
     Returns
     -------
-    dict  Ã¢ÂÂ parsed result with type, po_number, tracking, etc.
+    dict  ÃÂ¢ÃÂÃÂ parsed result with type, po_number, tracking, etc.
     """
     po_list_str = "\n".join(
         f"  - {po['po_number']}: {po.get('quantity', '?')}x {po['item_name']} from {po.get('vendor', '?')} (status: {po.get('status', '?')})"
@@ -300,6 +300,9 @@ You can handle these types of commands (interpret naturally - people won't use e
     Extract: item_name (match to catalog), quantity (the number to ADD).
     ALWAYS set needs_confirmation to false for add_stock - the user is reporting what they already did.
 
+17. "refresh_dashboard" - User wants to refresh/update the inventory dashboard canvas.
+    "refresh dashboard", "update the dashboard", "refresh the board", "sync the canvas", "update stock display".
+
 IMPORTANT RULES:
 - Match item names fuzzily to the catalog. People use shorthand and nicknames.
   "white rags" = "White Cleaning Cloths", "rags" = "White Cleaning Cloths", "white cloths" = "White Cleaning Cloths". DO NOT ignore rags - they are tracked.
@@ -355,7 +358,7 @@ def parse_bot_command(text: str, item_catalog: list[dict]) -> dict:
 
     Returns
     -------
-    dict  Ã¢ÂÂ parsed command with type, item details, etc.
+    dict  ÃÂ¢ÃÂÃÂ parsed command with type, item details, etc.
     """
     item_list_str = "\n".join(
         f"  - \"{item['alias']}\" -> {item['name']}"

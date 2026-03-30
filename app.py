@@ -2,9 +2,9 @@
 SpotOn Inventory Bot - AI-powered Slack bot for the full supply pipeline.
 
 Replaces all 3 Zapier Zaps:
-  Zap 1: Parses supply intake ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ decrements stock ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ triggers reorder alerts
+  Zap 1: Parses supply intake ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ decrements stock ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ triggers reorder alerts
   Zap 2: Creates POs in Google Sheets + ClickUp tasks
-  Zap 3: Handles order confirmations ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ updates PO log + ClickUp
+  Zap 3: Handles order confirmations ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ updates PO log + ClickUp
 
 Plus new capabilities:
  - AI-powered natural language understanding with clarification
@@ -24,7 +24,7 @@ load_dotenv()
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from ai_parser import parse_inventory_message, parse_po_message, parse_bot_command
+from ai_parser import parse_inventory_message, parse_po_message, parse_bot_command, parse_confirmation_reply
 from inventory import InventoryManager
 from clickup_client import ClickUpClient
 
@@ -52,10 +52,28 @@ _summary_lock = threading.Lock()
 _task_status_cache: dict[str, str] = {}
 _status_cache_lock = threading.Lock()
 
+# Cached bot user ID to avoid calling auth_test on every message
+_bot_user_id: str | None = None
+_bot_id_lock = threading.Lock()
+
 
 # ------------------------------------------------------------------ #
 #  Helpers
 # ------------------------------------------------------------------ #
+def _get_bot_user_id(client) -> str:
+    """Get the bot's own user ID, cached after first call."""
+    global _bot_user_id
+    with _bot_id_lock:
+        if _bot_user_id is None:
+            try:
+                info = client.auth_test()
+                _bot_user_id = info["user_id"]
+            except Exception as e:
+                logger.error(f"auth_test failed: {e}")
+                return ""
+        return _bot_user_id
+
+
 def _get_user_name(client, user_id: str) -> str:
     """Get a user's display name."""
     try:
@@ -224,12 +242,12 @@ def _notify_status_change(client, task_name: str, task_id: str,
 
     msg = (
         f"{emoji} *Task Update:* {task_name}\n"
-        f"Status changed: _{old_status}_ ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ *{new_status}*{link}"
+        f"Status changed: _{old_status}_ ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{new_status}*{link}"
     )
 
     try:
         client.chat_postMessage(channel=PO_CHANNEL, text=msg)
-        logger.info(f"Notified status change: {task_name} ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ {new_status}")
+        logger.info(f"Notified status change: {task_name} ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ {new_status}")
     except Exception as e:
         logger.error(f"Failed to notify status change: {e}")
 
@@ -426,9 +444,8 @@ def handle_supply_message(event, say, client):
     message_ts = event.get("ts")
 
     # Skip @mention messages - handle_mention will process these
-    bot_info = client.auth_test()
-    bot_user_id = bot_info["user_id"]
-    if f"<@{bot_user_id}>" in event.get("text", ""):
+    bid = _get_bot_user_id(client)
+    if bid and f"<@{bid}>" in event.get("text", ""):
         return
 
     user_name = _get_user_name(client, user_id)
@@ -450,7 +467,7 @@ def handle_supply_message(event, say, client):
     elif msg_type == "unclear":
         _handle_unclear(result, say, message_ts, user_name)
 
-    # "not_inventory" ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ ignore silently
+    # "not_inventory" ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ ignore silently
 
 
 def _handle_pickup(result: dict, say, client, thread_ts: str, user_name: str):
@@ -531,7 +548,7 @@ def _handle_stock_count(result: dict, say, client, thread_ts: str, user_name: st
                     arrow = f":arrow_down: ({diff})"
                 else:
                     arrow = ":left_right_arrow: (no change)"
-                lines.append(f"  :white_check_mark: *{display_name}*: {prev} ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ *{qty}* {arrow}")
+                lines.append(f"  :white_check_mark: *{display_name}*: {prev} ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{qty}* {arrow}")
             else:
                 lines.append(f"  :warning: *{display_name}*: couldn't update")
         else:
@@ -696,7 +713,7 @@ def handle_po_message(event, say, client):
         )
         say(text=f"Hey {user_name} - {question}", thread_ts=message_ts)
 
-    # "not_order" ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ ignore silently
+    # "not_order" ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ ignore silently
 
 
 def _handle_order_placed(result: dict, say, client, thread_ts: str, user_name: str):
@@ -820,7 +837,7 @@ def _handle_order_update(result: dict, say, client, thread_ts: str, user_name: s
             )
 
         say(
-            text=f":arrows_counterclockwise: Updated *{po_number}* ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ *{new_status}*",
+            text=f":arrows_counterclockwise: Updated *{po_number}* ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{new_status}*",
             thread_ts=thread_ts,
         )
     elif summary:
@@ -858,7 +875,7 @@ def handle_po_thread_reply(event, say, client):
 
 
 # ------------------------------------------------------------------ #
-#  Pending confirmations  (user_id ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ command dict)
+#  Pending confirmations  (user_id ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ command dict)
 # ------------------------------------------------------------------ #
 _pending_confirmations: dict[str, dict] = {}
 _confirmation_lock = threading.Lock()
@@ -892,47 +909,74 @@ def handle_mention(event, say, client):
             return
 
     # Parse the command with AI
-    catalog = inventory.get_item_names_and_aliases()
-    cmd = parse_bot_command(text, catalog)
-    cmd_type = cmd.get("type", "unknown")
+    try:
+        catalog = inventory.get_item_names_and_aliases()
+        cmd = parse_bot_command(text, catalog)
+        cmd_type = cmd.get("type", "unknown")
 
-    logger.info(f"Bot command from {user_name}: type={cmd_type}, summary={cmd.get('summary', '')}")
+        logger.info(f"Bot command from {user_name}: type={cmd_type}, summary={cmd.get('summary', '')}")
 
-    # If the AI says we need confirmation, stash the command and ask
-    if cmd.get("needs_confirmation"):
-        with _confirmation_lock:
-            _pending_confirmations[user_id] = cmd
-        question = cmd.get("confirmation_question", "Can you confirm you want me to do that?")
-        say(text=f":question: {question}", thread_ts=thread_ts)
-        return
+        # If the AI says we need confirmation, stash the command and ask
+        if cmd.get("needs_confirmation"):
+            with _confirmation_lock:
+                _pending_confirmations[user_id] = cmd
+            question = cmd.get("confirmation_question", "Can you confirm you want me to do that?")
+            say(text=f":question: {question}", thread_ts=thread_ts)
+            return
 
-    # Route to the right handler
-    _route_bot_command(cmd, cmd_type, say, client, thread_ts, user_name)
+        # Route to the right handler
+        _route_bot_command(cmd, cmd_type, say, client, thread_ts, user_name)
+    except Exception as e:
+        logger.error(f"handle_mention error for {user_name}: {e}", exc_info=True)
+        say(text=f"Sorry {user_name}, I hit a snag processing that. Could you try again?", thread_ts=thread_ts)
 
 
 def _handle_confirmation_reply(user_id: str, text: str, say, client, thread_ts: str, user_name: str):
-    """Handle a yes/no reply to a pending confirmation."""
-    affirm = text.lower().strip()
-    cmd = _pending_confirmations.pop(user_id, None)
+    """Handle a reply to a pending confirmation using AI to understand intent."""
+    import re
+    # Strip any bot mentions from the text
+    clean_text = re.sub(r"<@[A-Z0-9]+>\s*", "", text).strip()
+    if not clean_text:
+        return
 
+    cmd = _pending_confirmations.pop(user_id, None)
     if not cmd:
         return
 
-    affirm_words = {"yes", "y", "yep", "yeah", "sure", "do it", "confirm", "go ahead", "ok", "approved", "correct", "right", "absolutely", "please"}
-    deny_words = {"no", "n", "nope", "cancel", "nevermind", "never mind", "stop", "don't", "nah"}
+    try:
+        summary = cmd.get("confirmation_question", cmd.get("summary", "perform an action"))
+        result = parse_confirmation_reply(clean_text, summary)
+        intent = result.get("intent", "ambiguous")
 
-    # Check deny first (more specific)
-    if any(affirm.startswith(w) or affirm == w for w in deny_words):
-        say(text=":ok_hand: No problem - cancelled.", thread_ts=thread_ts)
-    elif any(w in affirm.split() or affirm.startswith(w) for w in affirm_words):
-        cmd_type = cmd.get("type", "unknown")
-        _route_bot_command(cmd, cmd_type, say, client, thread_ts, user_name)
-    else:
-        # Ambiguous - re-ask
-        say(text="I wasn't sure if that's a yes or no. Could you confirm with a simple yes or no?", thread_ts=thread_ts)
+        if intent == "yes":
+            cmd_type = cmd.get("type", "unknown")
+            _route_bot_command(cmd, cmd_type, say, client, thread_ts, user_name)
+        elif intent == "no":
+            say(text=f"No problem, {user_name}! Cancelled. Let me know if you need anything else.", thread_ts=thread_ts)
+        elif intent == "new_command":
+            # They're asking something new - process as a fresh command
+            say(text="Got it - looks like you want something different. Let me handle that.", thread_ts=thread_ts)
+            catalog = inventory.get_item_names_and_aliases()
+            new_cmd = parse_bot_command(clean_text, catalog)
+            new_type = new_cmd.get("type", "unknown")
+            if new_cmd.get("needs_confirmation"):
+                with _confirmation_lock:
+                    _pending_confirmations[user_id] = new_cmd
+                question = new_cmd.get("confirmation_question", "Can you confirm?")
+                say(text=f":question: {question}", thread_ts=thread_ts)
+            else:
+                _route_bot_command(new_cmd, new_type, say, client, thread_ts, user_name)
+        else:
+            # Ambiguous
+            say(text=f"Hmm, I'm not sure what you mean. Should I go ahead with the action, or skip it? Just say yes or no.", thread_ts=thread_ts)
+            with _confirmation_lock:
+                _pending_confirmations[user_id] = cmd  # put it back
+    except Exception as e:
+        logger.error(f"Confirmation handler error: {e}")
+        # On error, try to execute anyway if the text looks affirmative
+        say(text=f"Sorry, I had a hiccup. Could you try again?", thread_ts=thread_ts)
         with _confirmation_lock:
             _pending_confirmations[user_id] = cmd  # put it back
-
 
 def _route_bot_command(cmd: dict, cmd_type: str, say, client, thread_ts: str, user_name: str):
     """Dispatch a parsed command to the right handler function."""
@@ -1001,7 +1045,7 @@ def _handle_cmd_add_item(cmd: dict, say, client, thread_ts: str, user_name: str)
     if cmd.get("reorder_threshold"):
         details.append(f"Reorder at: {cmd['reorder_threshold']}")
     if details:
-        msg += "\n" + " ÃÂÃÂÃÂÃÂ· ".join(details)
+        msg += "\n" + " ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ· ".join(details)
 
     say(text=msg, thread_ts=thread_ts)
 
@@ -1085,7 +1129,7 @@ def _handle_cmd_set_stock(cmd: dict, say, client, thread_ts: str, user_name: str
     result = inventory.set_stock(matched, qty)
     if result:
         prev = result.get("previous_stock", "?")
-        say(text=f":pencil2: Updated *{matched}* stock: {prev} ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ *{int(qty)}*", thread_ts=thread_ts)
+        say(text=f":pencil2: Updated *{matched}* stock: {prev} ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{int(qty)}*", thread_ts=thread_ts)
         # Refresh pinned summary since stock changed
         # threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()  # DISABLED - fixing spam bug
     else:
@@ -1096,7 +1140,7 @@ def _handle_cmd_set_stock(cmd: dict, say, client, thread_ts: str, user_name: str
             result = inventory.set_stock(real_name, qty)
             if result:
                 prev = result.get("previous_stock", "?")
-                say(text=f":pencil2: Updated *{real_name}* stock: {prev} ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ *{int(qty)}*", thread_ts=thread_ts)
+                say(text=f":pencil2: Updated *{real_name}* stock: {prev} ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{int(qty)}*", thread_ts=thread_ts)
                 # threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()  # DISABLED - fixing spam bug
                 return
         say(text=f":warning: Couldn't find *{matched}* in the catalog to update stock.", thread_ts=thread_ts)
@@ -1140,11 +1184,11 @@ def _handle_cmd_show_shopping_list(cmd: dict, say, client, thread_ts: str, user_
 
         line = f"  :small_red_triangle_down: *{name}* - on hand: *{stock}* / min: *{threshold}*"
         if reorder_qty:
-            line += f"  ÃÂÃÂÃÂÃÂ·  order *{reorder_qty}*"
+            line += f"  ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ·  order *{reorder_qty}*"
         if url and vendor:
-            line += f"  ÃÂÃÂÃÂÃÂ·  <{url}|Buy from {vendor}>"
+            line += f"  ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ·  <{url}|Buy from {vendor}>"
         elif vendor:
-            line += f"  ÃÂÃÂÃÂÃÂ·  Vendor: {vendor}"
+            line += f"  ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ·  Vendor: {vendor}"
         line += po_badge
         lines.append(line)
 
@@ -1164,7 +1208,7 @@ def _handle_cmd_show_inventory(cmd: dict, say, client, thread_ts: str, user_name
 
         lines = [f":package: *Full Inventory Catalog* ({len(catalog)} items):\n"]
         for item in catalog:
-            lines.append(f"  ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ¢ {item['name']}" + (f"  _(alias: {item['alias']})_" if item.get("alias") else ""))
+            lines.append(f"  ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ {item['name']}" + (f"  _(alias: {item['alias']})_" if item.get("alias") else ""))
 
         sheet_url = os.environ.get("GOOGLE_SHEET_URL", "")
         if sheet_url:

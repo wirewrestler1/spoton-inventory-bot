@@ -20,7 +20,7 @@ You are the inventory assistant for Spot On Cleaners, a cleaning company in Lake
 Your job is to read Slack messages from cleaning staff and determine what supplies they picked up,
 dropped off, or are requesting.
 
-KNOWN INVENTORY ITEMS (alias → full name):
+KNOWN INVENTORY ITEMS (alias â full name):
 {item_list}
 
 RULES:
@@ -111,10 +111,10 @@ def parse_inventory_message(text: str, item_catalog: list[dict]) -> dict:
 
     Returns
     -------
-    dict  – parsed result with type, items, etc.
+    dict  â parsed result with type, items, etc.
     """
     item_list_str = "\n".join(
-        f"  - \"{item['alias']}\" → {item['name']}"
+        f"  - \"{item['alias']}\" â {item['name']}"
         for item in item_catalog
     )
 
@@ -166,7 +166,7 @@ def parse_po_message(text: str, active_pos: list[dict]) -> dict:
 
     Returns
     -------
-    dict  – parsed result with type, po_number, tracking, etc.
+    dict  â parsed result with type, po_number, tracking, etc.
     """
     po_list_str = "\n".join(
         f"  - {po['po_number']}: {po.get('quantity', '?')}x {po['item_name']} from {po.get('vendor', '?')} (status: {po.get('status', '?')})"
@@ -337,7 +337,7 @@ def parse_bot_command(text: str, item_catalog: list[dict]) -> dict:
 
     Returns
     -------
-    dict  – parsed command with type, item details, etc.
+    dict  â parsed command with type, item details, etc.
     """
     item_list_str = "\n".join(
         f"  - \"{item['alias']}\" -> {item['name']}"
@@ -378,3 +378,55 @@ def parse_bot_command(text: str, item_catalog: list[dict]) -> dict:
             "needs_confirmation": False,
             "summary": f"Error: {e}",
         }
+
+def parse_confirmation_reply(text: str, pending_command_summary: str) -> dict:
+    """
+    Use AI to determine if a user's reply to a confirmation question is yes, no, or something else.
+
+    Returns dict with:
+      - intent: "yes" | "no" | "new_command" | "ambiguous"
+      - explanation: brief reason
+    """
+    system_prompt = """You are interpreting a reply to a confirmation question from the SpotOn Inventory Bot.
+The bot asked the user to confirm an action, and the user replied. Determine their intent.
+
+The pending action was: """ + pending_command_summary + """
+
+Rules:
+- If the user is clearly agreeing, saying yes, confirming, or telling the bot to go ahead -> "yes"
+  Examples: "yes", "yeah do it", "go for it", "add five to it bro", "yep", "sure", "please", "correct"
+- If the user is clearly declining, canceling, or saying no -> "no"
+  Examples: "no", "cancel", "nah", "never mind", "don't do that"
+- If the user seems to be making a NEW request unrelated to the pending action -> "new_command"
+  Examples: "how many do we have?", "show me the list", "actually add toilet paper instead"
+- Only use "ambiguous" if you truly cannot determine intent.
+
+Respond ONLY with valid JSON:
+{"intent": "yes" | "no" | "new_command" | "ambiguous", "explanation": "brief reason"}"""
+
+    try:
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=256,
+            system=system_prompt,
+            messages=[{"role": "user", "content": text}],
+        )
+        raw = response.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+            if raw.endswith("```"):
+                raw = raw[:-3]
+            raw = raw.strip()
+        result = json.loads(raw)
+        logger.info(f"Confirmation parse: intent={result.get('intent')}, explanation={result.get('explanation')}")
+        return result
+    except Exception as e:
+        logger.error(f"Confirmation parse error: {e}")
+        # Fall back to simple keyword matching
+        lower = text.lower().strip()
+        if any(w in lower.split() or lower.startswith(w) for w in ("yes", "y", "yep", "yeah", "sure", "do it", "go", "ok", "confirm")):
+            return {"intent": "yes", "explanation": "keyword fallback"}
+        if any(w in lower.split() or lower.startswith(w) for w in ("no", "n", "nope", "cancel", "stop")):
+            return {"intent": "no", "explanation": "keyword fallback"}
+        return {"intent": "ambiguous", "explanation": "parse error fallback"}
+

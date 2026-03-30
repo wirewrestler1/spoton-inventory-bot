@@ -20,7 +20,7 @@ You are the inventory assistant for Spot On Cleaners, a cleaning company in Lake
 Your job is to read Slack messages from cleaning staff and determine what supplies they picked up,
 dropped off, or are requesting.
 
-KNOWN INVENTORY ITEMS (alias â full name):
+KNOWN INVENTORY ITEMS (alias Ã¢ÂÂ full name):
 {item_list}
 
 RULES:
@@ -41,6 +41,12 @@ RULES:
 
 For create_po type, extract: item_name (match to catalog), quantity (optional).
 For check_status type, extract: query (what they're asking about).
+
+IMPORTANT - Thread context: If the message includes "[Thread context - previous messages in this thread:" 
+then the user is replying in a thread. Use the thread context to understand what item they are referring to.
+For example, if the thread was about "White Cleaning Cloths" and the user says "i just bought 2 more", 
+you should classify this as "supply_pickup" with the item "White Cleaning Cloths" and quantity 2.
+Always infer the item from thread context when the user doesn't explicitly name it.
 
 Respond ONLY with valid JSON matching this schema:
 {
@@ -98,7 +104,7 @@ Respond ONLY with valid JSON matching this schema:
 """
 
 
-def parse_inventory_message(text: str, item_catalog: list[dict]) -> dict:
+def parse_inventory_message(text: str, item_catalog: list[dict], thread_context: str = "") -> dict:
     """
     Send a Slack message to Claude for parsing as a supply/inventory message.
 
@@ -111,10 +117,10 @@ def parse_inventory_message(text: str, item_catalog: list[dict]) -> dict:
 
     Returns
     -------
-    dict  â parsed result with type, items, etc.
+    dict  Ã¢ÂÂ parsed result with type, items, etc.
     """
     item_list_str = "\n".join(
-        f"  - \"{item['alias']}\" â {item['name']}"
+        f"  - \"{item['alias']}\" Ã¢ÂÂ {item['name']}"
         for item in item_catalog
     )
 
@@ -123,7 +129,7 @@ def parse_inventory_message(text: str, item_catalog: list[dict]) -> dict:
             model="claude-haiku-4-5-20251001",
             max_tokens=1024,
             system=SUPPLY_SYSTEM_PROMPT.replace("{item_list}", item_list_str),
-            messages=[{"role": "user", "content": text}],
+            messages=[{"role": "user", "content": (f"[Thread context - previous messages in this thread:\n{thread_context}]\n\nLatest message: {text}" if thread_context else text)}],
         )
 
         raw = response.content[0].text.strip()
@@ -166,7 +172,7 @@ def parse_po_message(text: str, active_pos: list[dict]) -> dict:
 
     Returns
     -------
-    dict  â parsed result with type, po_number, tracking, etc.
+    dict  Ã¢ÂÂ parsed result with type, po_number, tracking, etc.
     """
     po_list_str = "\n".join(
         f"  - {po['po_number']}: {po.get('quantity', '?')}x {po['item_name']} from {po.get('vendor', '?')} (status: {po.get('status', '?')})"
@@ -287,17 +293,29 @@ You can handle these types of commands (interpret naturally - people won't use e
     "display the list", "show me the list", "what's on the list".
     This shows the full catalog with aliases. Separate from show_inventory which shows stock levels.
 
+16. "add_stock" - User added/bought/restocked items and wants to INCREMENT the current stock count.
+    Someone says "i just added two white rags to the pile", "bought 5 more lysol", "restocked gloves, got 10",
+    "just picked up 3 magic erasers from the store", "added 2 more to the white rags".
+    This is DIFFERENT from "set_stock" which sets an absolute count. "add_stock" means ADD to whatever is there now.
+    Extract: item_name (match to catalog), quantity (the number to ADD).
+    ALWAYS set needs_confirmation to false for add_stock - the user is reporting what they already did.
+
 IMPORTANT RULES:
 - Match item names fuzzily to the catalog. People use shorthand and nicknames.
   "white rags" = "White Cleaning Cloths", "rags" = "White Cleaning Cloths", "white cloths" = "White Cleaning Cloths". DO NOT ignore rags - they are tracked.
-- If the command seems clear enough to execute, mark needs_confirmation as false.
-- If the command is ambiguous or destructive (like removing an item), mark needs_confirmation as true
-  and include a confirmation_question asking the user to verify.
+- Default needs_confirmation to false. Most commands should just execute.
+- ONLY set needs_confirmation to true for destructive actions (removing an item, clearing stock to 0)
+  or truly ambiguous commands where you can't determine the item or action.
+- NEVER set needs_confirmation for: add_stock, set_stock with clear numbers, item_info, greeting,
+  show_inventory, show_shopping_list, display_list, help, check_status, create_po with clear item.
 - If they mention a URL, extract it fully.
 - If someone asks to add an item that already exists in the catalog, set type to "update_item" or
   "update_link" as appropriate and note it in the summary.
 - If someone says "we have X of [item]" or "[item] count is X" or "actually have X [item]",
-  that's a set_stock command - they're reporting a physical count.
+  that's a set_stock command - they're reporting an absolute physical count.
+- If someone says "i added X [item]", "bought X more [item]", "just restocked X [item]",
+  "picked up X [item]", "added X to the pile", that's an add_stock command - they're
+  saying they INCREASED the stock by that amount. add_stock NEVER needs confirmation.
 - If the message is vague (like "figure it out" or "just do it"), classify as "unknown" and
   ask a specific clarification question about what action they want (add, update stock, etc.).
 
@@ -337,7 +355,7 @@ def parse_bot_command(text: str, item_catalog: list[dict]) -> dict:
 
     Returns
     -------
-    dict  â parsed command with type, item details, etc.
+    dict  Ã¢ÂÂ parsed command with type, item details, etc.
     """
     item_list_str = "\n".join(
         f"  - \"{item['alias']}\" -> {item['name']}"

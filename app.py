@@ -2,9 +2,9 @@
 SpotOn Inventory Bot - AI-powered Slack bot for the full supply pipeline.
 
 Replaces all 3 Zapier Zaps:
-  Zap 1: Parses supply intake ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ decrements stock ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ triggers reorder alerts
+  Zap 1: Parses supply intake ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ decrements stock ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ triggers reorder alerts
   Zap 2: Creates POs in Google Sheets + ClickUp tasks
-  Zap 3: Handles order confirmations ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ updates PO log + ClickUp
+  Zap 3: Handles order confirmations ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ updates PO log + ClickUp
 
 Plus new capabilities:
  - AI-powered natural language understanding with clarification
@@ -60,6 +60,24 @@ _bot_id_lock = threading.Lock()
 # ------------------------------------------------------------------ #
 #  Helpers
 # ------------------------------------------------------------------ #
+def _get_thread_context(client, channel: str, thread_ts: str, max_messages: int = 8) -> str:
+    """Fetch recent thread messages to build context for AI parsing."""
+    try:
+        result = client.conversations_replies(channel=channel, ts=thread_ts, limit=max_messages)
+        messages = result.get("messages", [])
+        context_parts = []
+        for msg in messages[:-1]:  # Exclude the latest message (that's what we're processing)
+            text = msg.get("text", "")[:300]
+            if msg.get("bot_id"):
+                context_parts.append(f"Bot said: {text}")
+            else:
+                context_parts.append(f"User said: {text}")
+        return "\n".join(context_parts) if context_parts else ""
+    except Exception as e:
+        logger.error(f"Error getting thread context: {e}")
+        return ""
+
+
 def _get_bot_user_id(client) -> str:
     """Get the bot's own user ID, cached after first call."""
     global _bot_user_id
@@ -242,12 +260,12 @@ def _notify_status_change(client, task_name: str, task_id: str,
 
     msg = (
         f"{emoji} *Task Update:* {task_name}\n"
-        f"Status changed: _{old_status}_ ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{new_status}*{link}"
+        f"Status changed: _{old_status}_ ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{new_status}*{link}"
     )
 
     try:
         client.chat_postMessage(channel=PO_CHANNEL, text=msg)
-        logger.info(f"Notified status change: {task_name} ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ {new_status}")
+        logger.info(f"Notified status change: {task_name} ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ {new_status}")
     except Exception as e:
         logger.error(f"Failed to notify status change: {e}")
 
@@ -467,7 +485,7 @@ def handle_supply_message(event, say, client):
     elif msg_type == "unclear":
         _handle_unclear(result, say, message_ts, user_name)
 
-    # "not_inventory" ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ ignore silently
+    # "not_inventory" ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ ignore silently
 
 
 def _handle_pickup(result: dict, say, client, thread_ts: str, user_name: str):
@@ -548,7 +566,7 @@ def _handle_stock_count(result: dict, say, client, thread_ts: str, user_name: st
                     arrow = f":arrow_down: ({diff})"
                 else:
                     arrow = ":left_right_arrow: (no change)"
-                lines.append(f"  :white_check_mark: *{display_name}*: {prev} ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{qty}* {arrow}")
+                lines.append(f"  :white_check_mark: *{display_name}*: {prev} ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{qty}* {arrow}")
             else:
                 lines.append(f"  :warning: *{display_name}*: couldn't update")
         else:
@@ -656,26 +674,39 @@ def _handle_unclear(result: dict, say, thread_ts: str, user_name: str):
 
 
 def handle_supply_thread_reply(event, say, client):
-    """When someone replies in a supply thread, re-parse as a clarification."""
+    """When someone replies in a supply thread, re-parse with thread context."""
     text = event.get("text", "").strip()
     user_id = event.get("user", "")
+    channel = event.get("channel")
     thread_ts = event.get("thread_ts")
 
     if not text:
         return
 
-    user_name = _get_user_name(client, user_id)
-    catalog = inventory.get_item_names_and_aliases()
-    result = parse_inventory_message(text, catalog)
-    msg_type = result.get("type", "not_inventory")
+    # Skip bot mentions - handle_mention processes these
+    bid = _get_bot_user_id(client)
+    if bid and f"<@{bid}>" in event.get("text", ""):
+        return
 
-    if msg_type == "supply_pickup":
-        _handle_pickup(result, say, client, thread_ts, user_name)
-    elif msg_type == "stock_count":
-        _handle_stock_count(result, say, client, thread_ts, user_name)
-    elif msg_type == "unclear":
-        _handle_unclear(result, say, thread_ts, user_name)
-    # Otherwise ignore - they might just be chatting in the thread
+    user_name = _get_user_name(client, user_id)
+
+    try:
+        # Get thread context so AI knows what item is being discussed
+        thread_context = _get_thread_context(client, channel, thread_ts)
+        catalog = inventory.get_item_names_and_aliases()
+        result = parse_inventory_message(text, catalog, thread_context=thread_context)
+        msg_type = result.get("type", "not_inventory")
+
+        if msg_type == "supply_pickup":
+            _handle_pickup(result, say, client, thread_ts, user_name)
+        elif msg_type == "stock_count":
+            _handle_stock_count(result, say, client, thread_ts, user_name)
+        elif msg_type == "unclear":
+            _handle_unclear(result, say, thread_ts, user_name)
+        # Otherwise ignore - they might just be chatting in the thread
+    except Exception as e:
+        logger.error(f"Supply thread reply error: {e}", exc_info=True)
+        say(text=f"Sorry {user_name}, I had trouble with that. Could you rephrase?", thread_ts=thread_ts)
 
 
 # ------------------------------------------------------------------ #
@@ -713,7 +744,7 @@ def handle_po_message(event, say, client):
         )
         say(text=f"Hey {user_name} - {question}", thread_ts=message_ts)
 
-    # "not_order" ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ ignore silently
+    # "not_order" ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ ignore silently
 
 
 def _handle_order_placed(result: dict, say, client, thread_ts: str, user_name: str):
@@ -837,7 +868,7 @@ def _handle_order_update(result: dict, say, client, thread_ts: str, user_name: s
             )
 
         say(
-            text=f":arrows_counterclockwise: Updated *{po_number}* ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{new_status}*",
+            text=f":arrows_counterclockwise: Updated *{po_number}* ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{new_status}*",
             thread_ts=thread_ts,
         )
     elif summary:
@@ -875,7 +906,7 @@ def handle_po_thread_reply(event, say, client):
 
 
 # ------------------------------------------------------------------ #
-#  Pending confirmations  (user_id ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ command dict)
+#  Pending confirmations  (user_id ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ command dict)
 # ------------------------------------------------------------------ #
 _pending_confirmations: dict[str, dict] = {}
 _confirmation_lock = threading.Lock()
@@ -991,6 +1022,7 @@ def _route_bot_command(cmd: dict, cmd_type: str, say, client, thread_ts: str, us
         "show_inventory": _handle_cmd_show_inventory,
         "item_info": _handle_cmd_item_info,
         "help": _handle_cmd_help,
+        "add_stock": _handle_cmd_add_stock,
         "create_po": _handle_cmd_create_po,
         "check_status": _handle_cmd_check_status,
         "greeting": _handle_cmd_greeting,
@@ -1045,7 +1077,7 @@ def _handle_cmd_add_item(cmd: dict, say, client, thread_ts: str, user_name: str)
     if cmd.get("reorder_threshold"):
         details.append(f"Reorder at: {cmd['reorder_threshold']}")
     if details:
-        msg += "\n" + " ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ· ".join(details)
+        msg += "\n" + " ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ· ".join(details)
 
     say(text=msg, thread_ts=thread_ts)
 
@@ -1129,7 +1161,7 @@ def _handle_cmd_set_stock(cmd: dict, say, client, thread_ts: str, user_name: str
     result = inventory.set_stock(matched, qty)
     if result:
         prev = result.get("previous_stock", "?")
-        say(text=f":pencil2: Updated *{matched}* stock: {prev} ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{int(qty)}*", thread_ts=thread_ts)
+        say(text=f":pencil2: Updated *{matched}* stock: {prev} ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{int(qty)}*", thread_ts=thread_ts)
         # Refresh pinned summary since stock changed
         # threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()  # DISABLED - fixing spam bug
     else:
@@ -1140,7 +1172,7 @@ def _handle_cmd_set_stock(cmd: dict, say, client, thread_ts: str, user_name: str
             result = inventory.set_stock(real_name, qty)
             if result:
                 prev = result.get("previous_stock", "?")
-                say(text=f":pencil2: Updated *{real_name}* stock: {prev} ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{int(qty)}*", thread_ts=thread_ts)
+                say(text=f":pencil2: Updated *{real_name}* stock: {prev} ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ *{int(qty)}*", thread_ts=thread_ts)
                 # threading.Thread(target=update_pinned_summary, args=(client,), daemon=True).start()  # DISABLED - fixing spam bug
                 return
         say(text=f":warning: Couldn't find *{matched}* in the catalog to update stock.", thread_ts=thread_ts)
@@ -1184,11 +1216,11 @@ def _handle_cmd_show_shopping_list(cmd: dict, say, client, thread_ts: str, user_
 
         line = f"  :small_red_triangle_down: *{name}* - on hand: *{stock}* / min: *{threshold}*"
         if reorder_qty:
-            line += f"  ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ·  order *{reorder_qty}*"
+            line += f"  ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ·  order *{reorder_qty}*"
         if url and vendor:
-            line += f"  ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ·  <{url}|Buy from {vendor}>"
+            line += f"  ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ·  <{url}|Buy from {vendor}>"
         elif vendor:
-            line += f"  ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ·  Vendor: {vendor}"
+            line += f"  ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ·  Vendor: {vendor}"
         line += po_badge
         lines.append(line)
 
@@ -1208,7 +1240,7 @@ def _handle_cmd_show_inventory(cmd: dict, say, client, thread_ts: str, user_name
 
         lines = [f":package: *Full Inventory Catalog* ({len(catalog)} items):\n"]
         for item in catalog:
-            lines.append(f"  ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ {item['name']}" + (f"  _(alias: {item['alias']})_" if item.get("alias") else ""))
+            lines.append(f"  ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ {item['name']}" + (f"  _(alias: {item['alias']})_" if item.get("alias") else ""))
 
         sheet_url = os.environ.get("GOOGLE_SHEET_URL", "")
         if sheet_url:
@@ -1274,6 +1306,28 @@ def _handle_cmd_help(cmd: dict, say, client, thread_ts: str, user_name: str):
 # ------------------------------------------------------------------ #
 #  Start
 # ------------------------------------------------------------------ #
+
+
+def _handle_cmd_add_stock(cmd: dict, say, client, thread_ts: str, user_name: str):
+    """Handle adding stock - user bought/added/restocked items."""
+    item_name = cmd.get("matched_name") or cmd.get("item_name", "")
+    quantity = cmd.get("quantity", 0)
+
+    if not item_name:
+        say(text="Which item did you add stock to?", thread_ts=thread_ts)
+        return
+    if not quantity or int(quantity) <= 0:
+        say(text=f"How many *{item_name}* did you add?", thread_ts=thread_ts)
+        return
+
+    try:
+        qty = int(quantity)
+        new_total = inventory.increment_stock(item_name, qty)
+        say(text=f":white_check_mark: Got it, {user_name}! Added *{qty}* to *{item_name}*. New total: *{new_total}*.", thread_ts=thread_ts)
+        logger.info(f"Stock incremented by {user_name}: {item_name} +{qty} = {new_total}")
+    except Exception as e:
+        logger.error(f"add_stock error: {e}")
+        say(text=f":warning: Had trouble updating stock for {item_name}: {e}", thread_ts=thread_ts)
 
 
 def _handle_cmd_create_po(cmd: dict, say, client, thread_ts: str, user_name: str):

@@ -317,12 +317,11 @@ def _handle_clickup_task_completed(client, task_id: str, task_name: str):
             ),
         )
 
-        # Refresh pinned summary
         # Update the inventory canvas
-    try:
-        update_canvas(inventory)
-    except Exception as e:
-        logger.warning(f"Canvas update failed after stock count: {e}")
+        try:
+            update_canvas(inventory)
+        except Exception as e:
+            logger.warning(f"Canvas update failed after stock count: {e}")
 
         logger.info(f"Auto-completed PO {po_number} from ClickUp task {task_id}")
 

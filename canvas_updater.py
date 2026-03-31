@@ -1,16 +1,20 @@
 """
 Slack Canvas updater for SpotOn Inventory Bot.
+
 Reads current inventory from Google Sheets and updates a Slack Canvas
 with a nicely formatted stock dashboard.
 
-The bot creates and owns its own canvas on first run, then updates it
-on subsequent calls. The canvas ID is stored in a local file so it
-persists across restarts.
+Strategy:
+1. If SLACK_CANVAS_ID env var is set, try to edit that canvas (standalone).
+2. If standalone edit fails, try channel canvas edit via conversations API.
+3. If no canvas exists yet, create a channel canvas (auto-appears as tab).
+4. Save the working canvas ID for future calls.
 """
 
 import os
 import logging
 import datetime
+
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
@@ -59,21 +63,31 @@ def _build_canvas_markdown(items: list[dict]) -> str:
 
     categories: dict[str, list] = {}
     needs_reorder = []
+
     for item in items:
         cat = item.get("category", "") or "Other"
         categories.setdefault(cat, []).append(item)
+
         try:
             stock_f = float(item.get("current_stock", 0) or 0)
             thresh_f = float(item.get("reorder_threshold", 0) or 0)
         except (ValueError, TypeError):
             stock_f, thresh_f = 0, 0
+
         if thresh_f > 0 and stock_f <= thresh_f:
             needs_reorder.append(item)
 
     lines = []
-    lines.append("This dashboard is automatically updated by the SpotOn Inventory Bot whenever stock levels change.")
+    lines.append(
+        "This dashboard is automatically updated by the SpotOn Inventory Bot "
+        "whenever stock levels change."
+    )
     lines.append("")
-    lines.append(":large_green_circle: = Healthy | :large_yellow_circle: = Low (at/below reorder point) | :red_circle: = Out of stock")
+    lines.append(
+        ":large_green_circle: = Healthy | "
+        ":large_yellow_circle: = Low (at/below reorder point) | "
+        ":red_circle: = Out of stock"
+    )
     lines.append("")
 
     for cat in sorted(categories):
@@ -81,32 +95,42 @@ def _build_canvas_markdown(items: list[dict]) -> str:
         lines.append("")
         lines.append("| Status | Item | Qty | Reorder At |")
         lines.append("|--------|------|-----|------------|")
+
         for item in sorted(categories[cat], key=lambda x: x.get("item_name", "")):
             name = item.get("item_name", "Unknown")
             stock = item.get("current_stock", 0)
             threshold = item.get("reorder_threshold", 0)
+
             try:
                 stock_f = float(stock) if stock != "" else 0
                 thresh_f = float(threshold) if threshold != "" else 0
             except (ValueError, TypeError):
                 stock_f, thresh_f = 0, 0
+
             if stock_f <= 0:
                 dot = ":red_circle:"
             elif thresh_f > 0 and stock_f <= thresh_f:
                 dot = ":large_yellow_circle:"
             else:
                 dot = ":large_green_circle:"
+
             thresh_display = str(int(thresh_f)) if thresh_f > 0 else "-"
             stock_display = int(stock_f) if stock_f == int(stock_f) else stock_f
+
             lines.append(f"| {dot} | {name} | {stock_display} | {thresh_display} |")
         lines.append("")
 
+    # Shopping list
     lines.append("## :rotating_light: Shopping List (Need to Order)")
     lines.append("")
-    if needs_reorder:
-        out_items = [i for i in needs_reorder if float(i.get("current_stock", 0) or 0) <= 0]
-        low_items = [i for i in needs_reorder if float(i.get("current_stock", 0) or 0) > 0]
 
+    if needs_reorder:
+        out_items = [
+            i for i in needs_reorder if float(i.get("current_stock", 0) or 0) <= 0
+        ]
+        low_items = [
+            i for i in needs_reorder if float(i.get("current_stock", 0) or 0) > 0
+        ]
         if out_items:
             lines.append("| Item | Qty | Reorder At | Status |")
             lines.append("|------|-----|------------|--------|")
@@ -120,25 +144,93 @@ def _build_canvas_markdown(items: list[dict]) -> str:
                 stock_val = float(item.get("current_stock", 0) or 0)
                 stock = int(stock_val) if stock_val == int(stock_val) else stock_val
                 thresh = int(float(item.get("reorder_threshold", 0) or 0))
-                lines.append(f"| {name} | {stock} | {thresh} | Low - Reorder soon |")
-            lines.append("")
+                lines.append(
+                    f"| {name} | {stock} | {thresh} | Low - Reorder soon |"
+                )
+        lines.append("")
     else:
-        lines.append("All items are above reorder thresholds. Nothing to order right now.")
+        lines.append(
+            "All items are above reorder thresholds. Nothing to order right now."
+        )
         lines.append("")
 
     lines.append("## Quick Reference")
     lines.append("")
-    lines.append('To add stock: "@SpotOn Inventory Bot i just added 5 white rags to the pile"')
+    lines.append(
+        'To add stock: "@SpotOn Inventory Bot i just added 5 white rags to the pile"'
+    )
     lines.append("")
-    lines.append('To check an item: "@SpotOn Inventory Bot how many magic erasers do we have?"')
+    lines.append(
+        'To check an item: "@SpotOn Inventory Bot how many magic erasers do we have?"'
+    )
     lines.append("")
-    lines.append('To place a PO: "@SpotOn Inventory Bot create a PO for scrubbing bubbles"')
+    lines.append(
+        'To place a PO: "@SpotOn Inventory Bot create a PO for scrubbing bubbles"'
+    )
     lines.append("")
     lines.append('To refresh: "@SpotOn Inventory Bot refresh dashboard"')
     lines.append("")
     lines.append(f"Last updated: {now}")
-
     return "\n".join(lines)
+
+
+def _edit_canvas(client: WebClient, canvas_id: str, markdown: str) -> bool:
+    """Edit an existing standalone canvas."""
+    try:
+        client.api_call(
+            api_method="canvases.edit",
+            json={
+                "canvas_id": canvas_id,
+                "changes": [
+                    {
+                        "operation": "replace",
+                        "document_content": {
+                            "type": "markdown",
+                            "markdown": markdown,
+                        },
+                    }
+                ],
+            },
+        )
+        return True
+    except SlackApiError as e:
+        error_code = e.response.get("error", "")
+        logger.error(f"Canvas edit failed ({error_code}): {e}")
+        if error_code in ("restricted_action", "canvas_not_found", "not_authed"):
+            # Canvas not owned by bot or deleted - clear it
+            global _canvas_id
+            _canvas_id = None
+            try:
+                os.remove(CANVAS_ID_FILE)
+            except OSError:
+                pass
+            return False
+        return False
+
+
+def _edit_channel_canvas(client: WebClient, markdown: str) -> bool:
+    """Try to edit the channel's native canvas via conversations API."""
+    try:
+        result = client.api_call(
+            api_method="conversations.canvases.create",
+            json={
+                "channel_id": CHANNEL_ID,
+                "document_content": {
+                    "type": "markdown",
+                    "markdown": markdown,
+                },
+            },
+        )
+        canvas_id = result.get("canvas_id")
+        if canvas_id:
+            logger.info(f"Created/updated channel canvas: {canvas_id}")
+            _save_canvas_id(canvas_id)
+            return True
+        return False
+    except SlackApiError as e:
+        error_code = e.response.get("error", "")
+        logger.warning(f"Channel canvas create failed ({error_code}): {e}")
+        return False
 
 
 def _create_canvas(client: WebClient, markdown: str) -> str | None:
@@ -147,7 +239,7 @@ def _create_canvas(client: WebClient, markdown: str) -> str | None:
         result = client.api_call(
             api_method="canvases.create",
             json={
-                "title": "Spot On Cleaners \u2014 Live Inventory Dashboard",
+                "title": "Spot On Cleaners -- Live Inventory Dashboard",
                 "document_content": {
                     "type": "markdown",
                     "markdown": markdown,
@@ -177,7 +269,10 @@ def _create_canvas(client: WebClient, markdown: str) -> str | None:
             try:
                 client.chat_postMessage(
                     channel=CHANNEL_ID,
-                    text=f":clipboard: *Inventory Dashboard Updated!* <https://slack.com/docs/{canvas_id}|Open Dashboard>",
+                    text=(
+                        f":clipboard: *Inventory Dashboard Updated!* "
+                        f"<https://slack.com/docs/{canvas_id}|Open Dashboard>"
+                    ),
                 )
             except SlackApiError:
                 pass
@@ -189,43 +284,15 @@ def _create_canvas(client: WebClient, markdown: str) -> str | None:
         return None
 
 
-def _edit_canvas(client: WebClient, canvas_id: str, markdown: str) -> bool:
-    """Edit an existing canvas."""
-    try:
-        client.api_call(
-            api_method="canvases.edit",
-            json={
-                "canvas_id": canvas_id,
-                "changes": [
-                    {
-                        "operation": "replace",
-                        "document_content": {
-                            "type": "markdown",
-                            "markdown": markdown,
-                        },
-                    }
-                ],
-            },
-        )
-        return True
-    except SlackApiError as e:
-        error_code = e.response.get("error", "")
-        logger.error(f"Canvas edit failed ({error_code}): {e}")
-        if error_code in ("restricted_action", "canvas_not_found", "not_authed"):
-            # Canvas not owned by bot or deleted - clear it so we create a new one
-            global _canvas_id
-            _canvas_id = None
-            try:
-                os.remove(CANVAS_ID_FILE)
-            except OSError:
-                pass
-            return False
-        return False
-
-
 def update_canvas(inventory_manager) -> bool:
     """
     Pull current inventory and update (or create) the Slack Canvas.
+
+    Strategy:
+    1. Try editing the known canvas ID (from env var or saved file).
+    2. If that fails, try creating a channel canvas (appears as a tab).
+    3. If that fails, create a standalone canvas and share it.
+
     Returns True on success, False on failure.
     """
     if not SLACK_TOKEN:
@@ -244,13 +311,18 @@ def update_canvas(inventory_manager) -> bool:
             if success:
                 logger.info(f"Canvas {canvas_id} updated successfully")
                 return True
-            # Edit failed - fall through to create a new one
-            logger.info("Canvas edit failed, creating a new bot-owned canvas...")
+            # Edit failed - try channel canvas next
 
-        # Create a new canvas
+        # Try creating/updating a channel canvas (auto-appears as tab)
+        logger.info("Trying channel canvas approach...")
+        if _edit_channel_canvas(client, markdown):
+            return True
+
+        # Fall back to standalone canvas
+        logger.info("Channel canvas failed, creating standalone canvas...")
         new_id = _create_canvas(client, markdown)
         if new_id:
-            logger.info(f"New canvas created: {new_id}")
+            logger.info(f"New standalone canvas created: {new_id}")
             return True
 
         logger.error("Failed to create or update canvas")
